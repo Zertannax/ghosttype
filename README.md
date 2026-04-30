@@ -5,7 +5,7 @@
 ```
 $ ghosttype analyze essay.txt
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  GHOSTTYPE — AI Slop Detector v0.1.0
+  GhostType — AI Slop Detector v0.1.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Slop Score : 73/100  ██████████░░░░  HIGH
@@ -24,44 +24,34 @@ $ ghosttype analyze essay.txt
 
 AI slop = text that is technically correct but stylistically hollow. Generic openers, filler hedges, buzzword clusters, over-structured paragraphs, fake balance. You know it when you read it. GhostType scores it.
 
-## Two modes
-
-| Mode | Requirements | What it does |
-|------|-------------|--------------|
-| `--no-llm` | Nothing | Heuristics + embeddings. Fast, offline, runs anywhere. |
-| `--llm` | Ollama + 4B model | Adds rewrite suggestions via local LLM. |
-
-Both modes give a slop score. The LLM only adds rewrites.
-
 ## Install
 
 ```bash
-# With pip
-pip install ghosttype
-
-# From source
-git clone https://github.com/yourname/ghosttype
+# Clone the repository
+git clone https://github.com/Zertannax/ghosttype.git
 cd ghosttype
+
+# Install dependencies with Poetry
+poetry install
+
+# Or install in development mode
 pip install -e ".[dev]"
 ```
 
 ## Usage
 
 ```bash
-# Basic analysis
+# Basic analysis (reads file or stdin)
 ghosttype analyze text.txt
 
 # Analyze stdin
 echo "In today's fast-paced world..." | ghosttype analyze -
 
-# With rewrite suggestions (requires Ollama)
-ghosttype analyze essay.txt --rewrite --model qwen2.5:3b
-
 # JSON output for piping
 ghosttype analyze text.txt --json | jq '.passages'
 
-# Web UI (optional, requires: pip install ghosttype[web])
-ghosttype serve --port 8080
+# Show version
+ghosttype version
 ```
 
 ## Scoring
@@ -76,14 +66,72 @@ Score is 0–100. Higher = more sloppy.
 | 61–80 | High | Heavy slop, rewrites recommended |
 | 81–100 | Critical | Almost certainly AI-generated as-is |
 
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Score < 40 (clean) |
+| 1 | Score 40–70 (moderate) |
+| 2 | Score > 70 (high slop) |
+
+Exit codes enable shell scripting: `ghosttype analyze draft.txt || echo "too sloppy"`
+
 ## Stack
 
 - **Core detection:** heuristics + rule engine (see `PATTERNS.md`)
-- **Semantic scoring:** `fastembed` / `sentence-transformers`
-- **Rewrite engine:** Ollama local LLM (Qwen2.5-3B or Phi-3.5-mini)
-- **CLI:** `typer` + `rich`
-- **API (optional):** `FastAPI`
-- **Web UI (optional):** lightweight, no framework
+- **Semantic scoring:** fastembed / sentence-transformers (planned for v0.2)
+- **Rewrite engine:** Ollama local LLM (planned for v0.2)
+- **CLI:** typer + rich
+- **API (optional):** FastAPI (planned for v0.2)
+
+## Development
+
+```bash
+# Setup
+poetry install
+
+# Run tests
+poetry run pytest
+
+# Lint and format
+poetry run ruff check .
+poetry run ruff format .
+
+# Type check
+poetry run mypy ghosttype/
+```
+
+## Project structure
+
+```
+ghosttype/
+├── ghosttype/              # Package principal
+│   ├── cli.py              # CLI entry point
+│   ├── preprocessor.py     # Text segmentation
+│   ├── scorer.py           # Score aggregation
+│   ├── semantic.py         # Semantic scorer (planned)
+│   ├── rewriter.py         # LLM rewrite engine (planned)
+│   ├── heuristics/
+│   │   ├── engine.py       # Pattern orchestration
+│   │   └── patterns/       # Pattern definitions
+│   │       ├── openers.py
+│   │       ├── hedges.py
+│   │       ├── buzzwords.py
+│   │       ├── structure.py (planned)
+│   │       ├── balance.py (planned)
+│   │       └── transitions.py (planned)
+│   └── data/               # Reference corpora (planned)
+├── tests/                  # Test suite
+├── scripts/                # GHCLI helpers
+├── README.md
+├── ARCHITECTURE.md
+├── PATTERNS.md
+├── DATASETS.md
+├── ROADMAP.md
+├── AGENTS.md
+├── GHCLI.md
+└── pyproject.toml
+```
 
 ## License
 
