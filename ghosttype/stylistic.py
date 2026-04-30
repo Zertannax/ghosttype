@@ -11,10 +11,12 @@ class StylisticFeatures:
     """Collection of stylistic features for a passage."""
 
     sentence_variance: float
+    paragraph_variance: float
     avg_word_length: float
     punctuation_density: float
     rare_word_ratio: float
     formal_word_ratio: float
+    neutrality_score: float
     ai_score: float
 
 
@@ -30,7 +32,8 @@ def extract_features(passage: Passage) -> StylisticFeatures:
     text = passage.text
     sentences = re.split(r'[.!?]+', text)
     sentences = [s.strip() for s in sentences if s.strip()]
-    words = re.findall(r'\w+', text)
+    words = re.findall(r'\b\w+\b', text)
+    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
 
     # Sentence length variance (AI tends uniform lengths)
     if len(sentences) > 1:
@@ -41,6 +44,16 @@ def extract_features(passage: Passage) -> StylisticFeatures:
         sentence_variance = min(1.0, max(0.0, 1.0 - (variance / 500)))
     else:
         sentence_variance = 0.5
+
+    # Paragraph length variance (AI tends very uniform paragraph lengths)
+    if len(paragraphs) > 1:
+        para_word_counts = [len(p.split()) for p in paragraphs]
+        avg_para = sum(para_word_counts) / len(para_word_counts)
+        para_variance = sum((c - avg_para) ** 2 for c in para_word_counts) / len(para_word_counts)
+        # Very low variance = strong AI indicator (normalize 0-300 range)
+        paragraph_variance = min(1.0, max(0.0, 1.0 - (para_variance / 300)))
+    else:
+        paragraph_variance = 0.5
 
     # Average word length (AI tends longer/formal words)
     if words:
@@ -86,21 +99,41 @@ def extract_features(passage: Passage) -> StylisticFeatures:
     else:
         formal_word_ratio = 0.0
 
+    # Neutrality score (AI text is very emotionally neutral)
+    emotional_words = {
+        "love", "hate", "amazing", "terrible", "awful", "wonderful", "brilliant",
+        "stupid", "ridiculous", "fantastic", "horrible", "beautiful", "ugly",
+        "excited", "bored", "angry", "happy", "sad", "frustrated", "thrilled",
+        "devastated", "ecstatic", "furious", "delighted", "miserable",
+        "amour", "haine", "merveilleux", "horrible", "génial", "ridicule",
+        "magnifique", "dégueulasse", "heureux", "triste", "furieux", "ravi",
+    }
+    if words:
+        emotional_count = sum(1 for w in words if w.lower() in emotional_words)
+        # High neutrality = low emotional word ratio
+        neutrality_score = 1.0 - min(1.0, emotional_count / len(words) * 10)
+    else:
+        neutrality_score = 0.5
+
     # Combined AI score
     ai_score = (
-        sentence_variance * 0.3 +
-        avg_word_length * 0.2 +
+        sentence_variance * 0.2 +
+        paragraph_variance * 0.25 +
+        avg_word_length * 0.1 +
         punctuation_density * 0.1 +
-        rare_word_ratio * 0.2 +
-        formal_word_ratio * 0.2
+        rare_word_ratio * 0.15 +
+        formal_word_ratio * 0.1 +
+        neutrality_score * 0.1
     )
 
     return StylisticFeatures(
         sentence_variance=sentence_variance,
+        paragraph_variance=paragraph_variance,
         avg_word_length=avg_word_length,
         punctuation_density=punctuation_density,
         rare_word_ratio=rare_word_ratio,
         formal_word_ratio=formal_word_ratio,
+        neutrality_score=neutrality_score,
         ai_score=ai_score,
     )
 
