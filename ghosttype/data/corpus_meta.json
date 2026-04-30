@@ -1,0 +1,23 @@
+{
+  "version": "0.4.0",
+  "date": "2026-04-30",
+  "model": "BAAI/bge-small-en-v1.5",
+  "dimensions": 384,
+  "slop_corpus": {
+    "n_passages": 975,
+    "sources": {
+      "raid": 975
+    },
+    "models": {
+      "llama-chat": 741,
+      "mpt": 234
+    }
+  },
+  "human_corpus": {
+    "n_passages": 1000,
+    "sources": {
+      "falcon": 500,
+      "raid": 500
+    }
+  }
+}

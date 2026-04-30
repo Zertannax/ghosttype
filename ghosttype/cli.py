@@ -47,7 +47,7 @@ def _render_rich_output(result: AnalysisResult) -> None:
     # Header
     console.print()
     console.print("=" * 50)
-    console.print("  [bold]GhostType[/bold] - AI Slop Detector v0.3.0")
+    console.print("  [bold]GhostType[/bold] - AI Slop Detector v0.4.0")
     console.print("=" * 50)
     console.print()
 
@@ -176,7 +176,7 @@ def analyze(
 @app.command()
 def version() -> None:
     """Show version information."""
-    console.print("GhostType v0.3.0")
+    console.print("GhostType v0.4.0")
 
 
 if __name__ == "__main__":
