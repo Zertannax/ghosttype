@@ -105,7 +105,7 @@ def extract_features(passage: Passage) -> StylisticFeatures:
         "stupid", "ridiculous", "fantastic", "horrible", "beautiful", "ugly",
         "excited", "bored", "angry", "happy", "sad", "frustrated", "thrilled",
         "devastated", "ecstatic", "furious", "delighted", "miserable",
-        "amour", "haine", "merveilleux", "horrible", "génial", "ridicule",
+        "amour", "haine", "merveilleux", "génial", "ridicule",
         "magnifique", "dégueulasse", "heureux", "triste", "furieux", "ravi",
     }
     if words:

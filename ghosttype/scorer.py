@@ -124,12 +124,33 @@ def aggregate(
     # Heuristic document score
     heuristic_score = total_weighted_score / total_length if total_length > 0 else 0
 
+    # Detect strong human indicators (negative severity patterns)
+    human_indicators = sum(
+        1 for passage in passages
+        for hit in hits_by_passage.get(passage.index, [])
+        if hit.severity < 0
+    )
+
+    # Adjust weights: more human indicators = trust semantic/stylistic less
+    if human_indicators >= 3:
+        # Strong human text detected (classical oratory, etc.)
+        h_weight, s_weight, st_weight = 0.30, 0.35, 0.35
+        # Apply human bonus
+        human_bonus = -5 * min(human_indicators, 10)  # Cap at -50
+    elif human_indicators >= 1:
+        h_weight, s_weight, st_weight = 0.35, 0.325, 0.325
+        human_bonus = -3 * human_indicators
+    else:
+        h_weight, s_weight, st_weight = 0.40, 0.30, 0.30
+        human_bonus = 0
+
     # Combine scores
     if semantic_score is not None and stylistic_score is not None:
         combined = (
-            0.40 * heuristic_score +
-            0.30 * (semantic_score * 100) +
-            0.30 * (stylistic_score * 100)
+            h_weight * heuristic_score +
+            s_weight * (semantic_score * 100) +
+            st_weight * (stylistic_score * 100) +
+            human_bonus
         )
         doc_score = round(combined)
     elif semantic_score is not None:

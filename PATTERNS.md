@@ -1,4 +1,4 @@
-# GhostType — AI Slop Pattern Taxonomy
+﻿# GhostType â€” AI Slop Pattern Taxonomy
 
 > Reference document for the heuristic engine.
 > Each pattern has: ID, category, examples, severity, rationale.
@@ -107,10 +107,10 @@ Filler transitions overused by LLMs to chain paragraphs.
 If 3+ patterns from different categories appear in a single passage, apply a **+0.15 severity bonus** to the passage score. Clustered patterns are more diagnostic than isolated ones.
 
 ### BZ-05 special rule
-"delve", "tapestry", "nuanced understanding", "multifaceted" — when any 2 of these appear in the same passage, flag it as HIGH regardless of other scores. These are near-zero false-positive AI tells.
+"delve", "tapestry", "nuanced understanding", "multifaceted" â€” when any 2 of these appear in the same passage, flag it as HIGH regardless of other scores. These are near-zero false-positive AI tells.
 
 ### Length normalization
-Pattern hit rate is normalized by passage length. A 10-word passage with 1 hit ≠ a 200-word passage with 1 hit.
+Pattern hit rate is normalized by passage length. A 10-word passage with 1 hit â‰  a 200-word passage with 1 hit.
 
 ---
 
@@ -118,14 +118,14 @@ Pattern hit rate is normalized by passage length. A 10-word passage with 1 hit �
 
 These exist but are excluded because false positive rate is too high:
 
-- Passive voice → common in academic writing, technical docs, legal text
-- Long sentences → common in literary prose
-- Formal vocabulary → legitimate in many contexts
-- Absence of contractions → too context-dependent
+- Passive voice â†’ common in academic writing, technical docs, legal text
+- Long sentences â†’ common in literary prose
+- Formal vocabulary â†’ legitimate in many contexts
+- Absence of contractions â†’ too context-dependent
 
 ---
 
-## Contributing new patterns
+## Category 7: Journalist Patterns\n\n**Severity: MEDIUM-HIGH (0.6)**\n\nSee journalist.py for 27 patterns including conventional phrases, unsupported claims, accumulation, classical oratory (negative severity).\n\n---\n\n## Category 8: Conversational Slop\n\nChatGPT/Claude neutral, hedged, over-agreeable style.\n\n**Severity: MEDIUM (0.5)**\n\nSee conversational.py for 15 patterns including setup framing, fake humility, neutrality signals.\n\n---\n\n## Category 9: Academic Markers\n\nAI-generated research paper conventions.\n\n**Severity: MEDIUM-HIGH (0.6)**\n\nSee cademic.py for 15 patterns including thesis statements, literature review, passive voice.\n\n---\n\n## Category 10: Technical Markers\n\nAI-generated documentation/tutorial conventions.\n\n**Severity: MEDIUM (0.5)**\n\nSee 	echnical.py for 15 patterns including step procedures, command blocks, callout boxes.\n\n---\n\n## Contributing new patterns
 
 When adding a pattern:
 1. Assign an ID following the `CATEGORY-##` format

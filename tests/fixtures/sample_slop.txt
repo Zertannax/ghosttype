@@ -1,33 +1,4 @@
-Anthropic vient de sortir Opus 4.7. 
-
-On a clairement remarqué des baisses de perfs en utilisation avancée. Voici (peut être) la réponse 👇
-
-Et pour la première fois, les pros de la cybersécurité doivent passer une vérification d’identité pour exploiter les capacités cyber d’un modèle d’IA frontier grand public.
-
-Je m’explique.
-
-L’annonce officielle tient sur des chiffres de performance : 64,3% sur SWE-bench Pro contre 53,4% pour Opus 4.6, une vision trois fois plus fine, un nouveau niveau de raisonnement “xhigh”, le tout au même prix que la version précédente. Sur le papier, c’est une mise à jour classique.
-
-Sauf que le vrai signal n’est pas dans les benchmarks.
-
-Il est dans une phrase du communiqué que peu de monde relève. Opus 4.7 embarque des garde-fous qui détectent et bloquent automatiquement les requêtes cyber “prohibées ou à haut risque”. 
-
-Les capacités offensives du modèle ont été volontairement réduites pendant l’entraînement. Et pour y accéder à des fins légitimes, les pros de la sécurité doivent désormais passer par le Cyber Verification Program d’Anthropic.
-
-Pourquoi maintenant. Parce qu’Anthropic garde dans ses coffres un autre modèle, Claude Mythos, qui ne sortira jamais pour le grand public. 
-
-Ce modèle a réussi 73% des CTF de niveau expert dans l’évaluation indépendante de l’AI Security Institute britannique, et il est devenu le premier modèle IA à terminer une simulation d’attaque réseau complète, 32 étapes de la reconnaissance à la prise de contrôle totale, sans aucune intervention humaine.
-
-Opus 4.7, dans le narratif officiel d’Anthropic, est présenté comme le laboratoire qui permettra un jour de déployer des modèles de cette puissance en toute sécurité. C’est écrit noir sur blanc dans l’annonce de Project Glasswing : les garde-fous d’Opus 4.7 sont testés aujourd’hui pour pouvoir libérer les modèles de classe Mythos demain.
-
-Ce que ça change pour nos entreprises. 
-
-Vos attaquants n’ont pas de Cyber Verification Program à signer. Ils utilisent des versions open source, des modèles jailbreakés, et ils ont le temps de leur côté. 
-
-Votre posture défensive peut encaisser un adversaire qui automatise la reconnaissance, l’exploitation et le mouvement latéral en quelques heures au lieu de plusieurs semaines ? 
-
-Dans 9 audits de sécu sur 10 que je mène, la réponse est non.
-
-Le fait que cette barrière administrative existe, c’est une excellente nouvelle pour l’industrie.
-
-Le fait qu’elle soit devenue nécessaire, beaucoup moins.
+With the rise of digital tools, the main shift is really in how people think and organize their work. Decisions are no longer based only on intuition, but also on data that you learn to use over time. It helps make choices more consistent, even if it’s never perfect.
+In practice, it’s all about balance: using the information you have without getting overwhelmed by it. The people who perform best aren’t necessarily the ones with the most data, but the ones who know how to turn it into something practical. That’s where method really makes a difference.
+Work habits are also evolving little by little. Things move faster, with more precision, but it requires staying flexible because everything changes quickly. Those who can adapt without getting lost in complexity clearly have an edge.
+At the end of the day, there’s nothing revolutionary on its own. It’s the accumulation of small, smart adjustments that ends up creating a real advantage over time.
