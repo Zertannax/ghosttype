@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from ghosttype.heuristics.engine import PatternHit
 from ghosttype.preprocessor import Passage
 
+# Score weights
+SEMANTIC_WEIGHT = 0.45
+HEURISTIC_WEIGHT = 0.55
+
 
 @dataclass
 class PassageResult:
@@ -79,12 +83,14 @@ def _score_passage(passage: Passage, hits: list[PatternHit]) -> int:
 def aggregate(
     passages: list[Passage],
     hits_by_passage: dict[int, list[PatternHit]],
+    semantic_score: float | None = None,
 ) -> AnalysisResult:
     """Aggregate passage scores into document score.
 
     Args:
         passages: List of preprocessed passages.
         hits_by_passage: Dictionary mapping passage index to hits.
+        semantic_score: Optional semantic score 0.0-1.0.
 
     Returns:
         AnalysisResult with overall score and labels.
@@ -114,8 +120,15 @@ def aggregate(
         total_length += weight
         total_hits += len(hits)
 
-    # Document score: weighted average
-    doc_score = round(total_weighted_score / total_length) if total_length > 0 else 0
+    # Heuristic document score
+    heuristic_score = total_weighted_score / total_length if total_length > 0 else 0
+
+    # Combine with semantic score if available
+    if semantic_score is not None:
+        combined = HEURISTIC_WEIGHT * heuristic_score + SEMANTIC_WEIGHT * (semantic_score * 100)
+        doc_score = round(combined)
+    else:
+        doc_score = round(heuristic_score)
 
     doc_score = min(100, max(0, doc_score))
     doc_label = _get_label(doc_score)

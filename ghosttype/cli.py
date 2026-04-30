@@ -11,6 +11,7 @@ from rich.table import Table
 from ghosttype.heuristics.engine import HeuristicEngine
 from ghosttype.preprocessor import preprocess
 from ghosttype.scorer import AnalysisResult, aggregate
+from ghosttype.semantic import semantic_score_passages
 
 app = typer.Typer(
     name="GhostType",
@@ -45,7 +46,7 @@ def _render_rich_output(result: AnalysisResult) -> None:
     # Header
     console.print()
     console.print("â”" * 50)
-    console.print("  [bold]GhostType[/bold] â€” AI Slop Detector v0.1.0")
+    console.print("  [bold]GhostType[/bold] â€” AI Slop Detector v0.2.0")
     console.print("â”" * 50)
     console.print()
 
@@ -157,7 +158,8 @@ def analyze(
     passages = preprocess(text)
     engine = HeuristicEngine()
     hits_by_passage = engine.analyze(passages)
-    result = aggregate(passages, hits_by_passage)
+    semantic = semantic_score_passages(passages)
+    result = aggregate(passages, hits_by_passage, semantic)
 
     # Output
     if json_output:
@@ -172,7 +174,7 @@ def analyze(
 @app.command()
 def version() -> None:
     """Show version information."""
-    console.print("GhostType v0.1.0")
+    console.print("GhostType v0.2.0")
 
 
 if __name__ == "__main__":
