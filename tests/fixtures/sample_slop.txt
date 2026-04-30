@@ -1,5 +1,33 @@
-Within a systemic and multidimensional perspective, it appears relevant to consider that the optimization of decision-making processes is embedded in a dynamic of continuous improvement, based on the iterative analysis of available data. Indeed, the correlation between exogenous and endogenous variables enables the construction of high value-added predictive models, thereby fostering informed and rational decision-making.
+Anthropic vient de sortir Opus 4.7. 
 
-Furthermore, the integration of adaptive mechanisms within organizational architectures contributes to strengthening the overall resilience of the system, while simultaneously maximizing operational efficiency. This holistic approach, combined with the rigorous exploitation of performance indicators, paves the way for disruptive innovation levers capable of redefining existing paradigms.
+On a clairement remarqué des baisses de perfs en utilisation avancée. Voici (peut être) la réponse 👇
 
-In summary, the convergence of emerging technologies and advanced analytical methodologies acts as a strategic catalyst, enabling the alignment of short-term objectives with a forward-looking vision oriented toward sustainability and scalability.
+Et pour la première fois, les pros de la cybersécurité doivent passer une vérification d’identité pour exploiter les capacités cyber d’un modèle d’IA frontier grand public.
+
+Je m’explique.
+
+L’annonce officielle tient sur des chiffres de performance : 64,3% sur SWE-bench Pro contre 53,4% pour Opus 4.6, une vision trois fois plus fine, un nouveau niveau de raisonnement “xhigh”, le tout au même prix que la version précédente. Sur le papier, c’est une mise à jour classique.
+
+Sauf que le vrai signal n’est pas dans les benchmarks.
+
+Il est dans une phrase du communiqué que peu de monde relève. Opus 4.7 embarque des garde-fous qui détectent et bloquent automatiquement les requêtes cyber “prohibées ou à haut risque”. 
+
+Les capacités offensives du modèle ont été volontairement réduites pendant l’entraînement. Et pour y accéder à des fins légitimes, les pros de la sécurité doivent désormais passer par le Cyber Verification Program d’Anthropic.
+
+Pourquoi maintenant. Parce qu’Anthropic garde dans ses coffres un autre modèle, Claude Mythos, qui ne sortira jamais pour le grand public. 
+
+Ce modèle a réussi 73% des CTF de niveau expert dans l’évaluation indépendante de l’AI Security Institute britannique, et il est devenu le premier modèle IA à terminer une simulation d’attaque réseau complète, 32 étapes de la reconnaissance à la prise de contrôle totale, sans aucune intervention humaine.
+
+Opus 4.7, dans le narratif officiel d’Anthropic, est présenté comme le laboratoire qui permettra un jour de déployer des modèles de cette puissance en toute sécurité. C’est écrit noir sur blanc dans l’annonce de Project Glasswing : les garde-fous d’Opus 4.7 sont testés aujourd’hui pour pouvoir libérer les modèles de classe Mythos demain.
+
+Ce que ça change pour nos entreprises. 
+
+Vos attaquants n’ont pas de Cyber Verification Program à signer. Ils utilisent des versions open source, des modèles jailbreakés, et ils ont le temps de leur côté. 
+
+Votre posture défensive peut encaisser un adversaire qui automatise la reconnaissance, l’exploitation et le mouvement latéral en quelques heures au lieu de plusieurs semaines ? 
+
+Dans 9 audits de sécu sur 10 que je mène, la réponse est non.
+
+Le fait que cette barrière administrative existe, c’est une excellente nouvelle pour l’industrie.
+
+Le fait qu’elle soit devenue nécessaire, beaucoup moins.

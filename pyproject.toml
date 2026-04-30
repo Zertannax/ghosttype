@@ -24,6 +24,7 @@ packages = [{include = "ghosttype"}]
 python = "^3.11"
 typer = "^0.15.0"
 rich = "^13.9.0"
+fastembed = "^0.8.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"

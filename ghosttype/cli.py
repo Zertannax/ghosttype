@@ -12,6 +12,7 @@ from ghosttype.heuristics.engine import HeuristicEngine
 from ghosttype.preprocessor import preprocess
 from ghosttype.scorer import AnalysisResult, aggregate
 from ghosttype.semantic import semantic_score_passages
+from ghosttype.stylistic import stylistic_score_passages
 
 app = typer.Typer(
     name="GhostType",
@@ -45,9 +46,9 @@ def _render_rich_output(result: AnalysisResult) -> None:
     """Render analysis result with rich formatting."""
     # Header
     console.print()
-    console.print("â”" * 50)
-    console.print("  [bold]GhostType[/bold] â€” AI Slop Detector v0.2.0")
-    console.print("â”" * 50)
+    console.print("=" * 50)
+    console.print("  [bold]GhostType[/bold] - AI Slop Detector v0.3.0")
+    console.print("=" * 50)
     console.print()
 
     # Score display
@@ -103,7 +104,7 @@ def _render_rich_output(result: AnalysisResult) -> None:
         console.print("[green]âœ“[/green] No AI slop patterns detected. Text looks clean!")
         console.print()
 
-    console.print("â”" * 50)
+    console.print("=" * 50)
     console.print()
 
 
@@ -159,7 +160,8 @@ def analyze(
     engine = HeuristicEngine()
     hits_by_passage = engine.analyze(passages)
     semantic = semantic_score_passages(passages)
-    result = aggregate(passages, hits_by_passage, semantic)
+    stylistic = stylistic_score_passages(passages)
+    result = aggregate(passages, hits_by_passage, semantic, stylistic)
 
     # Output
     if json_output:
@@ -174,7 +176,7 @@ def analyze(
 @app.command()
 def version() -> None:
     """Show version information."""
-    console.print("GhostType v0.2.0")
+    console.print("GhostType v0.3.0")
 
 
 if __name__ == "__main__":

@@ -84,6 +84,7 @@ def aggregate(
     passages: list[Passage],
     hits_by_passage: dict[int, list[PatternHit]],
     semantic_score: float | None = None,
+    stylistic_score: float | None = None,
 ) -> AnalysisResult:
     """Aggregate passage scores into document score.
 
@@ -123,8 +124,15 @@ def aggregate(
     # Heuristic document score
     heuristic_score = total_weighted_score / total_length if total_length > 0 else 0
 
-    # Combine with semantic score if available
-    if semantic_score is not None:
+    # Combine scores
+    if semantic_score is not None and stylistic_score is not None:
+        combined = (
+            0.40 * heuristic_score +
+            0.30 * (semantic_score * 100) +
+            0.30 * (stylistic_score * 100)
+        )
+        doc_score = round(combined)
+    elif semantic_score is not None:
         combined = HEURISTIC_WEIGHT * heuristic_score + SEMANTIC_WEIGHT * (semantic_score * 100)
         doc_score = round(combined)
     else:
