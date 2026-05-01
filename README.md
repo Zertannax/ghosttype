@@ -1,194 +1,305 @@
-# GhostType
+<div align="center">
 
-> Detect AI-generated slop in any text. Score it.
+# 👻 GhostType
+
+**Detect AI-generated slop in any text. Score it 0–100. Stay 100% local.**
+
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-136%20passing-brightgreen.svg)](#testing)
+
+</div>
+
+---
+
+## What is AI slop?
+
+AI slop is text that's technically correct but stylistically hollow. Generic openers, filler hedges, buzzword clusters, over-structured paragraphs, fake balance, neutral framing. You know it when you read it. **GhostType scores it 0–100** so you can quantify it.
 
 ```
 $ ghosttype analyze essay.txt
 ==================================================
-  GhostType - AI Slop Detector v0.4.2
+  GhostType - AI Slop Detector v0.5.0
 ==================================================
 
-  Slop Score : 73/100  ██████████░░░░  HIGH
+  Slop Score : 73/100  ███████░░░  HIGH
   Patterns   : 8 detected
   Passages   : 3 analyzed
-
-  Flagged Passages
-  #  Text                                    Score  Hits
-  1  In today's fast-paced world, the...       73     8
-
-  Pattern Details
-  Pattern  Category     Matched Text                 Severity
-  OP-01    opener       In today's fast-paced world...  0.8
-  HE-01    hedge        It is worth noting that...      0.5
-  BZ-03    buzzword     groundbreaking approach...      0.6
-  ...
-
-==================================================
 ```
 
-## What is AI slop?
+---
 
-AI slop = text that is technically correct but stylistically hollow. Generic openers, filler hedges, buzzword clusters, over-structured paragraphs, fake balance, neutral framing. You know it when you read it. GhostType scores it 0-100.
+## Why local-first
 
-## Features
+- **No data leaves your machine.** No telemetry. No API calls. No accounts.
+- The web UI runs on `127.0.0.1` and never opens an outbound socket.
+- Embeddings (~130 MB BAAI/bge-small-en-v1.5) are cached locally on first run.
+- Reference corpora ship as `.npz` files — no raw text, no licensing nightmare.
 
-- **75+ heuristic patterns** across 8 categories: generic openers, hedge fillers, buzzword clusters, over-structure, fake balance, AI transitions, journalist conventions, conversational slop, academic markers, technical markers
-- **Semantic scoring**: fastembed embedding similarity vs 975 AI + 1000 human reference passages (BAAI/bge-small-en-v1.5, 384-dim)
-- **Stylistic analysis**: sentence length variance, paragraph uniformity, word rarity, punctuation density, neutrality detection
-- **Human indicator bonus**: detects classical oratory (Churchill, MLK, Socrates) and genuine human emotion to reduce false positives on real human text
-- **Rich CLI output** with ASCII-safe characters (Windows-compatible)
-- **JSON output** for piping and automation
-- **Exit codes** for shell scripting integration
+---
+
+## Three ways to use it
+
+### 🖥️ CLI
+
+```bash
+# Single file
+ghosttype analyze essay.txt
+
+# Stdin
+echo "In today's rapidly evolving landscape..." | ghosttype analyze -
+
+# A directory of essays, recursive, with a Markdown report
+ghosttype analyze ./essays/ --recursive --format md > report.md
+
+# CI gate: fail the build if any file scores above 60
+ghosttype analyze ./drafts/ --threshold 60
+
+# Per-pattern breakdown (debug calibration)
+ghosttype analyze essay.txt --explain
+```
+
+### 🌐 Web UI (drag-drop)
+
+```bash
+ghosttype serve
+# → open http://127.0.0.1:8080
+```
+
+A pure-black, animated drag-drop interface. Drop a `.txt` or paste your text. Score, breakdown, per-passage diagnostics, downloadable Markdown report.
+
+### 🔌 HTTP API
+
+```bash
+ghosttype serve --port 8080
+
+curl -X POST http://localhost:8080/api/analyze \
+     -H "Content-Type: application/json" \
+     -d '{"text": "In today'"'"'s world, we leverage synergy."}'
+```
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/health` | GET | Version + status |
+| `/api/analyze` | POST | JSON body `{text}` → full result |
+| `/api/analyze-file` | POST | Multipart upload → full result |
+| `/api/analyze.md` | POST | JSON body `{text}` → Markdown report |
+| `/docs` | GET | OpenAPI / Swagger UI |
+
+---
 
 ## Install
 
 ```bash
-# Clone the repository
 git clone https://github.com/Zertannax/ghosttype.git
 cd ghosttype
 
-# Install with Poetry
-poetry install
+# Editable install (pulls all runtime deps)
+pip install -e .
 
-# Or install in development mode
-pip install -e ".[dev]"
+# Optional: add the web UI extras
+pip install fastapi "uvicorn[standard]" python-multipart
 ```
 
-## Usage
+Or with [Poetry](https://python-poetry.org/):
 
 ```bash
-# Basic analysis (reads file or stdin)
-ghosttype analyze text.txt
-
-# Analyze stdin
-echo "In today's fast-paced world..." | ghosttype analyze -
-
-# JSON output for piping
-ghosttype analyze text.txt --json | jq '.score'
-
-# Show version
-ghosttype version
+poetry install                # base + dev
+poetry install --with web     # add fastapi/uvicorn for `serve`
 ```
 
-## Scoring
+---
 
-Score is 0-100. Higher = more sloppy.
+## How it works
 
-| Range | Label | What it means |
-|-------|-------|---------------|
-| 0-20 | Clean | Human voice, specific, grounded |
-| 21-40 | Mild | Some generic phrasing, mostly ok |
-| 41-60 | Moderate | Noticeable patterns, worth reviewing |
-| 61-80 | High | Heavy slop, rewrites recommended |
-| 81-100 | Critical | Almost certainly AI-generated as-is |
+```
+   ┌──────────────┐
+   │     Text     │
+   └──────┬───────┘
+          ▼
+   ┌──────────────┐
+   │ Preprocessor │   paragraph-level segmentation
+   └──────┬───────┘
+          ├─────────────────┬─────────────────┐
+          ▼                 ▼                 ▼
+   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+   │ Heuristic    │  │ Semantic     │  │ Stylistic    │
+   │ engine       │  │ scorer       │  │ scorer       │
+   │              │  │              │  │              │
+   │ 124 regex    │  │ fastembed +  │  │ variance,    │
+   │ patterns     │  │ cosine vs    │  │ neutrality,  │
+   │ 11 categories│  │ ref corpora  │  │ formality    │
+   └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
+          └─────────────────┼─────────────────┘
+                            ▼
+                   ┌────────────────┐
+                   │   Aggregator   │   weighted mix
+                   │                │   - cluster bonus
+                   │                │   - BZ-05 floor
+                   │                │   - human bonus
+                   └───────┬────────┘
+                           ▼
+                       Score 0–100
+```
 
-### Score composition
+The final score is a weighted combination of three signals:
 
-Final score = weighted combination of three signals:
-- **Heuristic** (40%): pattern matches across all categories
-- **Semantic** (30%): embedding similarity to AI vs human corpus
-- **Stylistic** (30%): statistical text features
-- **Human bonus** (-5 to -50): classical oratory/emotion detection reduces score
+| Signal | Weight | What it measures |
+|---|---|---|
+| **Heuristic** | 40 % | Pattern matches across 11 categories |
+| **Semantic** | 30 % | Cosine similarity to AI vs human reference embeddings |
+| **Stylistic** | 30 % | Sentence variance, neutrality, formality, punctuation density |
+| Human bonus | up to −50 | Negative-severity hits (classical oratory) reduce the score |
 
-## Exit codes
+When 3+ distinct categories cluster in one passage, scores are amplified by 1.15× (per the PATTERNS.md spec). When 2+ high-confidence AI tells (`delve`, `tapestry`, `nuanced understanding`, `multifaceted`) appear together, the passage is automatically floored at 70.
 
-| Code | Meaning |
-|------|---------|
-| 0 | Score <= 40 (Clean / Mild) |
-| 1 | Score 41-60 (Moderate) |
-| 2 | Score >= 61 (High / Critical) |
+---
 
-Exit codes enable shell scripting:
+## Score interpretation
+
+| Range | Label | What it means | Exit code |
+|---|---|---|:---:|
+| 0–20 | **Clean** | Human voice, specific, grounded | `0` |
+| 21–40 | **Mild** | Some generic phrasing, mostly OK | `0` |
+| 41–60 | **Moderate** | Noticeable patterns, worth reviewing | `1` |
+| 61–80 | **High** | Heavy slop, rewrites recommended | `2` |
+| 81–100 | **Critical** | Almost certainly AI-generated as-is | `2` |
+
+Exit codes enable shell scripting: `ghosttype analyze draft.txt || echo "too sloppy"`.
+
+---
+
+## Detection categories
+
+| Category | Patterns | Examples |
+|---|---:|---|
+| Generic openers | 10 | "In today's world", "It is important to note" |
+| Hedge fillers | 10 | "It is worth noting", "One could argue" |
+| Buzzword clusters | 16 | `delve`, `tapestry`, `synergy`, `paradigm shift` |
+| Over-structure | 6 | "Firstly… Secondly… Finally…" |
+| Fake balance | 4 | "On one hand… on the other hand…" |
+| AI transitions | 6 | Clustered "Furthermore,", "Moreover," |
+| Journalist patterns | 12 | Listicle markers, emoji formatting, classical oratory (negative severity) |
+| Conversational slop | 15 | ChatGPT setup framing, fake humility |
+| Academic markers | 15 | Thesis statements, literature review, passive voice |
+| Technical markers | 15 | Step-by-step, configuration callouts |
+| **Creative writing** | 15 | Cerulean eyes, "her heart skipped", "in that moment she knew" |
+| **Total** | **124** | English-only |
+
+---
+
+## Examples
+
+| Text | Score | Verdict |
+|---|---:|---|
+| Churchill — *"We shall fight on the beaches…"* | **0** | ✅ Clean (human-indicator bonus fires) |
+| MLK — *"I have a dream…"* | **23** | ✅ Mild |
+| Kennedy — *"Ask not what your country…"* | **14** | ✅ Clean |
+| Recipe — *"Add eggs. Mix well. Bake 30 min."* | **26** | ✅ Mild |
+| Plain Orwell-style narration | **29** | ✅ Mild |
+| AI fiction — *"Their eyes met across the moonlit garden, bathed in silver light. She felt a wave of longing…"* | **63** | ❌ High |
+| AI essay slop — *"In today's rapidly evolving landscape, we must leverage transformative methodologies…"* | **70** | ❌ High |
+
+---
+
+## Reference corpora
+
+GhostType ships pre-built `.npz` reference embeddings (no raw text) generated from public datasets:
+
+- **AI**: 975 passages from RAID (`llama-chat`, `mpt`) + Falcon RefinedWeb
+- **Human**: 1000 passages from RAID human + Falcon human
+- **Model**: `BAAI/bge-small-en-v1.5` (384-dim, ~130 MB)
+
+See [`DATASETS.md`](DATASETS.md) for sources, licenses, and how to rebuild your own.
+
+---
+
+## Benchmarking
+
+A reproducible benchmark harness ships with the repo:
+
 ```bash
-ghosttype analyze draft.txt || echo "too sloppy"
+python scripts/benchmark.py --n 50 --threshold 50 --output bench.csv
 ```
 
-## Detection Categories
+Outputs precision / recall / F1 / accuracy at the chosen threshold. Useful for tuning thresholds against your own corpus.
 
-| Category | Count | Description |
-|----------|-------|-------------|
-| Generic Openers | 5 | Temporal universalism, importance declarations |
-| Hedge Fillers | 5 | Epistemic hedges, soft assertions |
-| Buzzword Clusters | 5 | Synergy vocab, impact theater, AI self-description |
-| Over-Structure | 5 | Firstly/Secondly/Finally, paragraph signposting |
-| Fake Balance | 4 | Both-sides framing, pro/con without resolution |
-| AI Transitions | 4 | Furthermore, Moreover, Consequently (clustered) |
-| Journalist Patterns | 27 | Conventional phrases, unsupported claims, accumulation, classical oratory (negative severity) |
-| Conversational Slop | 15 | ChatGPT neutral framing, fake humility, hedging |
-| Academic Markers | 15 | Research paper conventions, passive voice, literature review |
-| Technical Markers | 15 | Documentation steps, commands, configuration |
-| **Total** | **~110** | English-only |
-
-## Reference Corpora
-
-| Corpus | Passages | Source |
-|--------|----------|--------|
-| AI slop | 975 | RAID (llama-chat, mpt) + Falcon RefinedWeb |
-| Human | 1000 | RAID human + Falcon human |
-| Model | BAAI/bge-small-en-v1.5 | 384-dim, ~130MB |
-
-Embeddings are pre-built and shipped as `.npz` files — no GPU required at runtime.
+---
 
 ## Development
 
 ```bash
-# Setup
-poetry install
-
-# Run tests
-poetry run pytest
+# Run the test suite
+pytest
 
 # Lint and format
-poetry run ruff check .
-poetry run ruff format .
+ruff check .
+ruff format .
 
 # Type check
-poetry run mypy ghosttype/
+mypy ghosttype/
+
+# Generate a fresh AI corpus via Ollama (optional)
+python scripts/generate_ai_corpus.py --model qwen3:14b \
+       --output data/datasets/ollama_qwen3_14b/ --count 1000
 ```
 
-## Project Structure
+The full suite runs in under 3 seconds (no fastembed required for tests — they use the keyword fallback path).
+
+---
+
+## Project structure
 
 ```
 ghosttype/
 ├── ghosttype/
-│   ├── cli.py              # CLI entry point (typer + rich)
-│   ├── preprocessor.py     # Text segmentation
-│   ├── scorer.py           # Score aggregation (heuristic + semantic + stylistic)
-│   ├── semantic.py         # fastembed embedding scorer
-│   ├── stylistic.py        # Statistical text analysis
+│   ├── cli.py              # typer CLI (analyze, serve, version)
+│   ├── api.py              # FastAPI app
+│   ├── pipeline.py         # shared analysis pipeline
+│   ├── preprocessor.py     # paragraph segmentation
+│   ├── scorer.py           # weighted aggregation + cluster/BZ-05 rules
+│   ├── semantic.py         # fastembed cosine scorer (top-k, NaN-safe)
+│   ├── stylistic.py        # variance, neutrality, formality
 │   ├── heuristics/
-│   │   ├── engine.py       # Pattern orchestration
-│   │   └── patterns/       # Pattern definitions
-│   │       ├── openers.py
-│   │       ├── hedges.py
-│   │       ├── buzzwords.py
-│   │       ├── structure.py
-│   │       ├── balance.py
-│   │       ├── transitions.py
-│   │       ├── journalist.py
-│   │       ├── conversational.py
-│   │       ├── academic.py
-│   │       └── technical.py
-│   └── data/
-│       ├── slop_corpus.npz     # AI reference embeddings (975, 384)
-│       ├── human_corpus.npz    # Human reference embeddings (1000, 384)
-│       └── corpus_meta.json    # Corpus metadata
-├── tests/                  # Test suite
-├── scripts/                # Dataset download + corpus build
-│   ├── download_datasets.py
-│   ├── download_falcon.py
-│   └── build_corpus.py
-├── README.md
+│   │   ├── engine.py       # regex orchestration + dedup
+│   │   └── patterns/       # 125+ patterns, one file per category
+│   ├── data/               # shipped .npz reference corpora
+│   └── web/                # static HTML/CSS/JS for the web UI
+├── scripts/
+│   ├── benchmark.py        # precision/recall/F1 harness
+│   ├── build_corpus.py     # rebuild .npz from raw datasets
+│   ├── download_*.py       # dataset downloaders
+│   └── generate_ai_corpus.py  # generate AI samples via Ollama
+├── tests/                  # 136 tests, all passing
 ├── ARCHITECTURE.md
 ├── PATTERNS.md
 ├── DATASETS.md
 ├── ROADMAP.md
-├── CHANGELOG.md
-├── AGENTS.md
-├── GHCLI.md
-└── pyproject.toml
+└── CHANGELOG.md
 ```
+
+---
+
+## Limitations
+
+- **English only.** French support is explicitly deferred.
+- **Calibrated for current models.** As LLMs evolve, patterns will need updates. The benchmark harness is your friend.
+- **Heuristics are conservative by design.** Precision is prioritised over recall — false positives on human prose are worse than missing some AI text.
+- **No browser extension** with server-side processing. Privacy-incompatible by design.
+
+---
+
+## Roadmap
+
+See [`ROADMAP.md`](ROADMAP.md) for upcoming features. Highlights:
+
+- Extended corpus (2000 AI + 1000 human via Ollama)
+- Pre-commit hook integration
+- VS Code extension
+- Plugin system for custom pattern packs
+
+---
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
