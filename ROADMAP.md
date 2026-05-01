@@ -4,51 +4,62 @@
 
 ---
 
-## v0.5.0 — Extended Corpus & Creative Detection
+## ✅ v0.5.0 — Web UI, batch CLI, expanded corpus *(released 2026-05-02)*
 
-- [ ] Generate 1000 additional AI passages via local LLM (Ollama + Phi-3)
-- [ ] Extend corpus to ~2000 AI + 1000 human embeddings
-- [ ] Creative writing patterns (fiction/storytelling AI): 15 patterns
-- [ ] Batch processing: analyze directories, globs, recursive
-- [ ] Multiple export formats: JSON, CSV, Markdown
-- [ ] Benchmark validation suite (50 AI + 50 human test texts)
-- [ ] Progress bar for multi-file analysis
+- [x] Generate 1000 additional AI passages via local LLM (Ollama + qwen3:14b)
+- [x] Extend corpus to ~2000 AI + 1000 human embeddings
+- [x] Creative writing patterns (fiction/storytelling AI): 15 patterns (CR-01 to CR-15)
+- [x] Batch processing: analyze directories, globs, recursive
+- [x] Multiple export formats: JSON, CSV, Markdown
+- [x] Benchmark validation suite (`scripts/benchmark.py`)
+- [x] Progress bar for multi-file analysis
+- [x] Local web UI (`ghosttype serve`) with drag-drop and animations
+- [x] HTTP API (`/api/analyze`, `/api/analyze-file`, `/api/analyze.md`)
+- [x] `--explain` flag with per-component score breakdown
+- [x] `--threshold N` flag for CI gates
+- [x] `--quiet` flag for shell scripting
+- [x] `patterns list` / `patterns describe` subcommands
+- [x] Public release on GitHub (MIT licensed)
+
+**Benchmark at v0.5.0**: F1 = 0.72, recall = 0.78 at threshold 30 (50/class, seed 42).
 
 ---
 
-## v0.6.0 — CLI Polish & Integrations
+## v0.6.0 — Calibration & integrations
 
-- [ ] `--explain` flag: per-pattern rationale output
-- [ ] `--threshold` flag: custom score thresholds
-- [ ] Pre-commit hook integration
-- [ ] VS Code extension (simple, calls CLI under the hood)
-- [ ] Performance optimization: caching, lazy loading
+- [ ] Held-out benchmark split (no data leakage between corpus and test set)
+- [ ] Pre-commit hook integration (`.pre-commit-hooks.yaml`)
+- [ ] VS Code extension (calls the CLI under the hood)
+- [ ] Config file (`~/.config/ghosttype/config.toml`) for custom weights / thresholds
+- [ ] Streaming analysis on large files (process passage-by-passage without loading the whole text)
+- [ ] Performance optimization: persistent embedding cache across runs
 
 ---
 
-## v0.7.0 — API & Web UI
+## v0.7.0 — Distribution
 
-- [ ] `ghosttype serve` — FastAPI server
-- [ ] Web UI for interactive analysis
-- [ ] OpenAPI spec
-- [ ] Docker image
+- [ ] PyPI release (`pip install ghosttype`)
+- [ ] Docker image (`ghosttype/ghosttype` on Docker Hub)
+- [ ] Homebrew formula
+- [ ] Standalone Windows / macOS / Linux binaries (PyInstaller)
+- [ ] Automated release pipeline via GitHub Actions
 
 ---
 
 ## v1.0.0 — Stable
 
-- [ ] Corpus update pipeline documented and automated
-- [ ] Published benchmarks (precision, recall, false positive rate)
 - [ ] Plugin system for custom pattern packs
-- [ ] Multilingual support (if demand exists)
-- [ ] Homebrew formula
+- [ ] Published benchmarks (precision, recall, F1) against multiple AI generators
+- [ ] Deeper semantic detection (ensemble of cosine + perplexity from a small local LM)
+- [ ] Web UI gets a passage-level "rewrite suggestion" mode (optional, behind a flag)
+- [ ] Stability guarantee on the JSON output schema
 
 ---
 
 ## Explicitly out of scope
 
-- Training a classifier from scratch — heuristics + embeddings are more explainable
+- Training a classifier from scratch — heuristics + embeddings stay more explainable
 - Browser extension with server-side processing — privacy concern
-- Paid tier / SaaS — stays open-source
+- Paid tier / SaaS — stays open-source, local-first
 - "AI content percentage" claims for SEO — not our problem
-- French language support — deferred indefinitely (English-only focus)
+- French (or any non-English) language support — repo is English-only by design

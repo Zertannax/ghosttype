@@ -2,272 +2,291 @@
 
 ## Overview
 
-GhostType is a pipeline: text in → scored passages out → optional rewrites.
+GhostType analyzes text in three layers — heuristic, semantic, stylistic — and combines their signals into a single 0–100 score. The same pipeline backs the CLI, the HTTP API, and the web UI.
 
 ```
-Input (file / stdin / API)
+Input (file / stdin / glob / directory / web upload)
         │
         ▼
 ┌───────────────────┐
-│   Preprocessor    │  Tokenize, segment into passages, clean whitespace
+│   Preprocessor    │  paragraph-level segmentation, HTML stripping
 └────────┬──────────┘
          │
          ▼
-┌───────────────────┐
-│  Heuristic Engine │  Rule-based pattern matching (fast, deterministic)
-│   (always on)     │  Output: pattern hits per passage
-└────────┬──────────┘
-         │
-         ▼
-┌───────────────────┐
-│  Semantic Scorer  │  Embedding similarity vs slop/human reference corpora
-│   (always on)     │  Output: semantic slop score 0.0–1.0
-└────────┬──────────┘
-         │
-         ▼
-┌───────────────────┐
-│   Score Aggregator│  Weighted combination → final score 0–100
-└────────┬──────────┘
-         │
-    ┌────┴────┐
-    │         │
-    ▼         ▼
- Report    [Optional]
- (CLI/JSON) Rewrite Engine (LLM via Ollama)
+┌───────────────────┐  ┌────────────────────┐  ┌──────────────────────┐
+│ Heuristic engine  │  │  Semantic scorer   │  │  Stylistic scorer    │
+│ 124 regex / 11 cat│  │  fastembed cosine  │  │  variance, neutrality│
+│ + dedup + rules   │  │  vs ref corpora    │  │  formality, density  │
+└────────┬──────────┘  └─────────┬──────────┘  └─────────┬────────────┘
+         └─────────────────────┼─────────────────────────┘
+                               ▼
+                  ┌──────────────────────┐
+                  │   Score aggregator   │  weighted mix
+                  │                      │  + cluster bonus (×1.15)
+                  │                      │  + BZ-05 floor (≥70)
+                  │                      │  + human-indicator bonus
+                  └──────────┬───────────┘
+                             ▼
+                       AnalysisResult
+                       (score 0–100,
+                        breakdown, hits)
+                             │
+        ┌────────────────────┼────────────────────┐
+        ▼                    ▼                    ▼
+  Rich console       JSON / CSV / MD          Web UI render
+  (CLI default)      (CLI / API endpoints)    (animated, dark)
 ```
 
 ---
 
 ## Modules
 
-### 1. Preprocessor (`ghosttype/preprocessor.py`)
+### `ghosttype/pipeline.py`
 
-**Responsibility:** normalize and segment input text.
+Single source of truth for the analysis flow. Both the CLI and the API call:
 
 ```python
-@dataclass
-class Passage:
-    index: int
-    text: str
-    start_char: int
-    end_char: int
+from ghosttype.pipeline import analyze_text, result_to_dict
+
+result = analyze_text(text)            # AnalysisResult | None
+payload = result_to_dict(result)       # JSON-serializable dict
 ```
 
-- Split on paragraphs (double newline) by default
-- Fallback: sentence segmentation via simple regex (no NLTK dependency for --no-llm mode)
-- Strip HTML if detected
+`analyze_text` orchestrates: preprocess → heuristic engine → semantic scorer → stylistic scorer → aggregator. Returns `None` for whitespace-only input.
 
 ---
 
-### 2. Heuristic Engine (`ghosttype/heuristics/`)
+### `ghosttype/preprocessor.py`
 
-**Responsibility:** pattern-based detection. Fast, deterministic, explainable.
+Splits text into `Passage` dataclasses (`index`, `text`, `start_char`, `end_char`). Strategy:
 
-Structure:
-```
-ghosttype/heuristics/
-  __init__.py
-  engine.py         # orchestrates all detectors
-  patterns/
-    openers.py      # generic opening phrases
-    hedges.py       # filler hedges and qualifiers
-    buzzwords.py    # corporate/AI buzzword clusters
-    structure.py    # over-structured patterns (firstly/secondly/finally)
-    balance.py      # fake balance ("on one hand... on the other hand...")
-    transitions.py  # AI transition phrases
-```
-
-Each detector returns:
-```python
-@dataclass
-class PatternHit:
-    pattern_id: str
-    category: str          # "opener" | "hedge" | "buzzword" | etc.
-    matched_text: str
-    start_char: int
-    end_char: int
-    severity: float        # 0.0–1.0
-```
-
-Weight table (tunable via config):
-| Category | Default weight |
-|----------|---------------|
-| opener | 0.8 |
-| hedge | 0.5 |
-| buzzword | 0.6 |
-| structure | 0.7 |
-| balance | 0.6 |
-| transition | 0.5 |
+- Strip basic HTML tags and named entities (`&amp;`, `&lt;`, `&gt;`)
+- Split on double newlines (`\n\s*\n`)
+- Fall back to sentence segmentation if no paragraphs are found
 
 ---
 
-### 3. Semantic Scorer (`ghosttype/semantic.py`)
+### `ghosttype/heuristics/`
 
-**Responsibility:** embedding-based similarity to reference corpora.
+Regex-based pattern detection.
 
-Two reference corpora (embedded at build time, shipped as small `.npz` files):
-- `slop_corpus`: ~500 passages from HC3 + RAID benchmark (AI-generated)
-- `human_corpus`: ~500 passages from Project Gutenberg + Reddit writing subs (human)
-
-At runtime:
-1. Embed input passage via `fastembed` (model: `BAAI/bge-small-en-v1.5`, ~130MB)
-2. Compute cosine similarity to slop centroid and human centroid
-3. Score = normalized distance ratio
-
-```python
-semantic_score = sim_to_slop / (sim_to_slop + sim_to_human)
-# 0.0 = very human-like, 1.0 = very slop-like
+```
+heuristics/
+├── engine.py       — orchestrates patterns, dedupes overlapping hits
+└── patterns/
+    ├── openers.py        (10 OP-XX)
+    ├── hedges.py         (10 HE-XX)
+    ├── buzzwords.py      (16 BZ-XX, incl. BZ-05 high-confidence tells)
+    ├── structure.py      (6  ST-XX)
+    ├── balance.py        (4  FB-XX)
+    ├── transitions.py    (6  TR-XX)
+    ├── journalist.py     (12 JR-XX, incl. negative-severity oratory)
+    ├── conversational.py (15 CS-XX)
+    ├── academic.py       (15 AC-XX)
+    ├── technical.py      (15 TC-XX)
+    └── creative.py       (15 CR-XX, fiction / storytelling)
 ```
 
-**Offline fallback:** if fastembed not available, semantic score = 0.5 (neutral), heuristics carry the weight.
-
----
-
-### 4. Score Aggregator (`ghosttype/scorer.py`)
+Each pattern is a dict:
 
 ```python
-WEIGHTS = {
-    "heuristic": 0.55,
-    "semantic":  0.45,
+{
+    "id": "BZ-05",
+    "category": "buzzword",
+    "regex": r"\bdelve\b|\btapestry\b|\bnuanced understanding\b|\bmultifaceted\b",
+    "severity": 0.9,           # negative = human indicator
+    "description": "AI self-description buzzword (high confidence)",
 }
-
-def aggregate(heuristic_score: float, semantic_score: float) -> int:
-    raw = WEIGHTS["heuristic"] * heuristic_score + WEIGHTS["semantic"] * semantic_score
-    return round(raw * 100)
 ```
 
-Passage-level scores → document score = weighted average (longer passages count more).
+The engine compiles every regex with `re.IGNORECASE | re.MULTILINE` and deduplicates hits sharing the same `(matched_text, start_char)` — keeps the strongest absolute severity. This prevents triple-counting when the same phrase appears in multiple categories (e.g. "in summary" in ST-04 + AC-05 + TC-08).
 
 ---
 
-### 5. Rewrite Engine (`ghosttype/rewriter.py`) — LLM mode only
+### `ghosttype/semantic.py`
 
-**Responsibility:** suggest human rewrites for flagged passages.
+fastembed cosine similarity against pre-built reference corpora.
 
-- Connects to Ollama via HTTP (`localhost:11434`)
-- Default model: `qwen2.5:3b` (fast, good quality)
-- Fallback: `phi3.5:mini`
-- Prompt is minimal and directive (see `PROMPTS.md`)
-- Streaming output for CLI feedback
+- Model: `BAAI/bge-small-en-v1.5` (384-dim, ~130 MB, cached at module level)
+- Reference corpora: `slop_corpus.npz` (2000 vectors) and `human_corpus.npz` (1000 vectors)
+- Per-passage score: `top_k_mean(sim_to_slop) / (top_k_mean(sim_to_slop) + top_k_mean(sim_to_human))` with `k = 10`
+- NaN-safe: zero-norm rows produce 0.0, never NaN
+- Validated on load: shape must be `(n, 384)`, otherwise the corpus is ignored with a warning
+- Falls back to a keyword-based heuristic when fastembed is unavailable OR when corpora are missing
+
+---
+
+### `ghosttype/stylistic.py`
+
+Statistical text features. Each feature is normalized to `[0, 1]` and then combined.
+
+| Feature | Weight | Higher = |
+|---|---:|---|
+| Sentence-length variance | 0.20 | More uniform → AI-like (skipped on short-form ≤30 char/sentence) |
+| Paragraph-length variance | 0.25 | More uniform → AI-like (skipped if ≤20 words/paragraph) |
+| Average word length | 0.10 | Longer words → AI-like |
+| Punctuation density | 0.10 | Higher → AI-like |
+| Common-word ratio | 0.15 | More common words → AI-like |
+| Formal-marker ratio | 0.10 | More "furthermore"/"nevertheless"/etc. |
+| Neutrality | 0.10 | Fewer emotional words → AI-like |
+
+The two variance signals are deliberately disabled on recipes / bullet lists / instruction text where short uniform sentences are the natural form.
+
+---
+
+### `ghosttype/scorer.py`
+
+Combines the three signals into the final document score.
 
 ```python
-def rewrite_passage(passage: str, hits: list[PatternHit]) -> str:
-    ...
+WEIGHTS = {"heuristic": 0.40, "semantic": 0.30, "stylistic": 0.30}
 ```
 
-Model is **never** called if `--no-llm` flag is set.
+Per-passage score:
+
+```python
+total_severity = sum(hit.severity for hit in hits)
+length_factor  = sqrt(max(10, word_count)) / 3.0
+score          = (total_severity / length_factor) * 100
+if 3+ distinct positive categories cluster:  score *= 1.15   # cluster bonus
+if 2+ BZ-05 hits in passage:                 score = max(score, 70)
+```
+
+Document score: length-weighted mean of passage scores, blended with semantic and stylistic, then adjusted by the human-indicator bonus (negative-severity hits like classical oratory reduce the score by up to −50).
+
+```python
+@dataclass
+class AnalysisResult:
+    score: int                     # 0–100
+    label: str                     # Clean / Mild / Moderate / High / Critical
+    passages: list[PassageResult]
+    total_hits: int
+    exit_code: int                 # 0 / 1 / 2
+    breakdown: ScoreBreakdown      # per-component breakdown for --explain
+```
 
 ---
 
-### 6. CLI (`ghosttype/cli.py`)
+### `ghosttype/cli.py`
 
-Built with `typer` + `rich`.
+Typer-based CLI.
 
-Commands:
 ```
-ghosttype analyze <file>   [--rewrite] [--model STR] [--json] [--no-llm]
-ghosttype serve            [--port INT] [--host STR]
+ghosttype analyze <target>   # file / dir / glob / -
+                  [--format rich|json|csv|md] [--json]
+                  [--recursive] [--ext txt,md]
+                  [--explain] [--threshold N] [--quiet]
+ghosttype serve   [--host 127.0.0.1] [--port 8080] [--no-browser]
+ghosttype patterns list [--category buzzword]
+ghosttype patterns describe <ID>
 ghosttype version
 ```
 
-Exit codes:
+Exit codes (default 3-bucket):
+
 | Code | Meaning |
-|------|---------|
-| 0 | Score < 40 (clean) |
-| 1 | Score 40–70 (moderate) |
-| 2 | Score > 70 (high slop) |
+|---|---|
+| 0 | Score ≤ 40 (Clean / Mild) |
+| 1 | Score 41–60 (Moderate) |
+| 2 | Score ≥ 61 (High / Critical) |
 
-Exit codes enable shell scripting: `ghosttype analyze draft.txt || echo "too sloppy"`
-
----
-
-### 7. API (`ghosttype/api.py`) — optional
-
-FastAPI app, same pipeline as CLI.
-
-```
-POST /analyze
-  body: { "text": "...", "rewrite": false }
-  returns: AnalysisResult
-
-GET  /health
-GET  /version
-```
+`--threshold N` overrides this with binary semantics: `score > N` → exit 2, otherwise exit 0.
 
 ---
 
-## Data flow (--no-llm mode)
+### `ghosttype/api.py`
+
+FastAPI app. Same pipeline as the CLI, served over HTTP.
 
 ```
-text.txt → Preprocessor → [Passage, Passage, ...]
-                               │
-               ┌───────────────┼───────────────┐
-               ▼               ▼               ▼
-          HeuristicEngine  SemanticScorer  (nothing else)
-               │               │
-               └───────┬───────┘
-                        ▼
-                  ScoreAggregator
-                        │
-                        ▼
-                   AnalysisResult → rich CLI output / JSON
+GET  /                  static HTML UI
+GET  /static/{path}     CSS / JS / logo
+GET  /api/health        { status, version }
+POST /api/analyze       { text } → AnalysisResult dict
+POST /api/analyze-file  multipart upload → AnalysisResult dict
+POST /api/analyze.md    { text } → Markdown report (text/plain)
+GET  /favicon.ico       PNG logo or SVG fallback
+GET  /docs              OpenAPI / Swagger UI
 ```
 
-## Data flow (--llm mode)
-
-Same as above, then:
-```
-AnalysisResult (passages with score > threshold)
-        │
-        ▼
-   RewriteEngine (Ollama)
-        │
-        ▼
-   AnalysisResult + rewrites → CLI output
-```
+Bound to `127.0.0.1` by default. No outbound network calls. No telemetry.
 
 ---
 
-## Config (`~/.config/ghosttype/config.toml`)
+### `ghosttype/web/`
 
-```toml
-[scoring]
-heuristic_weight = 0.55
-semantic_weight  = 0.45
-rewrite_threshold = 60   # only suggest rewrites for passages scoring above this
+Vanilla HTML / CSS / JS (no build step, no CDN, no webfont).
 
-[llm]
-host  = "http://localhost:11434"
-model = "qwen2.5:3b"
+- `index.html` — single page with drag-drop zone + textarea + result panel
+- `style.css` — pure `#000` background, score-driven accent colors, animations
+- `app.js` — drop handler, paste, fetch to `/api/analyze`, render with auto-expand for problematic passages
 
-[output]
-color = true
-show_matched_text = true
+Every visual asset (favicon, logo) is served from this directory.
+
+---
+
+## Data flow (offline mode, no fastembed)
+
 ```
+text → preprocess → [Passage, ...]
+                       │
+       ┌───────────────┼───────────────┐
+       ▼               ▼               ▼
+  HeuristicEngine  keyword_fallback  StylisticScorer
+       │               │               │
+       └───────┬───────┴───────────────┘
+               ▼
+         ScoreAggregator
+               │
+               ▼
+         AnalysisResult
+```
+
+The keyword fallback in `semantic.py` produces a coarse score from formal-marker counts and buzzword density — meaningful enough to keep the pipeline differentiated when embeddings are unavailable.
+
+---
+
+## Reference corpora
+
+Shipped pre-embedded as `.npz` files in `ghosttype/data/`:
+
+| File | Shape | Contents |
+|---|---|---|
+| `slop_corpus.npz` | (2000, 384) | RAID `llama-chat`/`mpt` + Ollama `qwen3:14b`/`qwen2.5:3b` |
+| `human_corpus.npz` | (1000, 384) | RAID human + Falcon RefinedWeb human |
+| `corpus_meta.json` | — | sources, models, version, build date |
+
+See [`DATASETS.md`](DATASETS.md) for licenses and rebuild instructions.
 
 ---
 
 ## Dependencies
 
-### Core (--no-llm)
+### Runtime (always)
 | Package | Purpose |
-|---------|---------|
+|---|---|
 | `typer` | CLI |
-| `rich` | Terminal formatting |
-| `fastembed` | Local embeddings |
+| `rich` | Terminal rendering |
 | `numpy` | Vector math |
-| `tomllib` | Config parsing (stdlib Python 3.11+) |
 
-### LLM mode
+### Runtime (semantic mode)
 | Package | Purpose |
-|---------|---------|
-| `httpx` | Ollama API calls |
+|---|---|
+| `fastembed` | Local embeddings (BAAI/bge-small-en-v1.5) |
 
-### Web (optional)
+### Runtime (web mode)
 | Package | Purpose |
-|---------|---------|
+|---|---|
 | `fastapi` | API server |
 | `uvicorn` | ASGI server |
+| `python-multipart` | File uploads |
+
+### Development
+| Package | Purpose |
+|---|---|
+| `pytest` | Tests |
+| `ruff` | Lint + format |
+| `mypy` | Type check |
 
 ---
 
@@ -276,30 +295,31 @@ show_matched_text = true
 ```
 ghosttype/
 ├── ghosttype/
-│   ├── __init__.py
-│   ├── cli.py
-│   ├── api.py
+│   ├── __init__.py            # __version__
+│   ├── pipeline.py            # shared analyze_text + result_to_dict
+│   ├── cli.py                 # typer commands
+│   ├── api.py                 # FastAPI app
 │   ├── preprocessor.py
 │   ├── scorer.py
 │   ├── semantic.py
-│   ├── rewriter.py
+│   ├── stylistic.py
 │   ├── heuristics/
 │   │   ├── engine.py
-│   │   └── patterns/
-│   │       ├── openers.py
-│   │       ├── hedges.py
-│   │       ├── buzzwords.py
-│   │       ├── structure.py
-│   │       ├── balance.py
-│   │       └── transitions.py
-│   └── data/
-│       ├── slop_corpus.npz
-│       └── human_corpus.npz
-├── tests/
+│   │   └── patterns/          # 11 category modules
+│   ├── data/                  # shipped .npz corpora + meta
+│   └── web/                   # static HTML / CSS / JS / logo
+├── scripts/
+│   ├── benchmark.py
+│   ├── build_corpus.py
+│   ├── download_*.py
+│   └── generate_ai_corpus.py
+├── tests/                     # 145 tests across 8 files
+├── docs/                      # logo, banner, screenshots
+├── README.md
+├── ARCHITECTURE.md
 ├── PATTERNS.md
 ├── DATASETS.md
 ├── ROADMAP.md
-├── ARCHITECTURE.md
-├── pyproject.toml
-└── README.md
+├── CHANGELOG.md
+└── pyproject.toml
 ```
