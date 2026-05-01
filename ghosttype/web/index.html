@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>GhostType — AI Slop Detector</title>
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <main>
+    <header class="hero">
+      <div class="logo">
+        <span class="ghost">👻</span>
+        <h1>GhostType</h1>
+      </div>
+      <p class="tagline">Detect AI-generated slop. Score it. Local-first, zero telemetry.</p>
+    </header>
+
+    <section id="input-panel" class="panel">
+      <div id="dropzone" class="dropzone" tabindex="0">
+        <div class="dropzone-inner">
+          <div class="drop-icon" aria-hidden="true">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/>
+            </svg>
+          </div>
+          <p class="drop-title">Drop a file here</p>
+          <p class="drop-hint">or paste text below · .txt / .md</p>
+          <input type="file" id="file-input" accept=".txt,.md,.rst,text/plain" hidden>
+        </div>
+      </div>
+
+      <div class="separator"><span>or</span></div>
+
+      <textarea
+        id="text-input"
+        placeholder="Paste your essay, article, or any text…"
+        spellcheck="false"
+        autocomplete="off"
+      ></textarea>
+
+      <div class="actions">
+        <button id="analyze-btn" class="btn-primary" type="button">
+          <span class="btn-label">Analyze</span>
+          <span class="btn-shimmer" aria-hidden="true"></span>
+        </button>
+        <button id="clear-btn" class="btn-ghost" type="button">Clear</button>
+        <span id="error-msg" class="error-msg" role="alert"></span>
+      </div>
+    </section>
+
+    <section id="result-panel" class="panel result hidden" aria-live="polite">
+      <div class="result-header">
+        <div class="score-block">
+          <div class="score-number" id="score-num">0</div>
+          <div class="score-suffix">/100</div>
+        </div>
+        <div class="score-meta">
+          <div class="score-label" id="score-label">—</div>
+          <div class="score-bar">
+            <div class="score-bar-fill" id="score-bar-fill"></div>
+          </div>
+          <div class="score-stats">
+            <span id="stat-hits">0 patterns</span>
+            <span class="stat-sep">·</span>
+            <span id="stat-passages">0 passages</span>
+            <span id="stat-flags"></span>
+          </div>
+        </div>
+        <div class="result-actions">
+          <button id="download-md" class="btn-ghost btn-sm" type="button">Download .md</button>
+        </div>
+      </div>
+
+      <div id="breakdown" class="breakdown"></div>
+
+      <div id="passages" class="passages"></div>
+    </section>
+
+    <footer>
+      <span class="dim">v<span id="version">…</span> · runs entirely on localhost · no data leaves your machine</span>
+    </footer>
+  </main>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

@@ -20,17 +20,13 @@ from rich.progress import (
 from rich.table import Table
 
 from ghosttype import __version__
-from ghosttype.heuristics.engine import HeuristicEngine
 from ghosttype.heuristics.patterns import ALL_PATTERNS
-from ghosttype.preprocessor import preprocess
+from ghosttype.pipeline import analyze_text, result_to_dict
 from ghosttype.scorer import (
     EXIT_CLEAN,
     EXIT_HIGH,
     AnalysisResult,
-    aggregate,
 )
-from ghosttype.semantic import semantic_score_passages
-from ghosttype.stylistic import stylistic_score_passages
 
 app = typer.Typer(
     name="GhostType",
@@ -56,16 +52,8 @@ def _read_input(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _analyze_text(text: str) -> AnalysisResult | None:
-    """Run the full pipeline on a text. Returns None for whitespace-only input."""
-    if not text.strip():
-        return None
-    passages = preprocess(text)
-    engine = HeuristicEngine()
-    hits_by_passage = engine.analyze(passages)
-    semantic = semantic_score_passages(passages)
-    stylistic = stylistic_score_passages(passages)
-    return aggregate(passages, hits_by_passage, semantic, stylistic)
+# Re-export for backward compatibility with anything importing _analyze_text.
+_analyze_text = analyze_text
 
 
 # ---------- path resolution ----------
@@ -279,32 +267,7 @@ def _render_rich_output(result: AnalysisResult) -> None:
     console.print()
 
 
-def _result_to_dict(result: AnalysisResult) -> dict:
-    """Convert AnalysisResult to a JSON-serializable dict."""
-    return {
-        "score": result.score,
-        "label": result.label,
-        "total_hits": result.total_hits,
-        "exit_code": result.exit_code,
-        "passages": [
-            {
-                "index": pr.passage.index,
-                "text": pr.passage.text,
-                "score": pr.score,
-                "label": pr.label,
-                "hits": [
-                    {
-                        "pattern_id": hit.pattern_id,
-                        "category": hit.category,
-                        "matched_text": hit.matched_text,
-                        "severity": hit.severity,
-                    }
-                    for hit in pr.hits
-                ],
-            }
-            for pr in result.passages
-        ],
-    }
+_result_to_dict = result_to_dict
 
 
 def _render_json_output(result: AnalysisResult) -> None:
@@ -613,6 +576,28 @@ def _analyze_one_file(path: Path) -> AnalysisResult | None:
 def version() -> None:
     """Show version information."""
     console.print(f"GhostType v{__version__}")
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind address (use 0.0.0.0 to expose on LAN)"),
+    port: int = typer.Option(8080, "--port", "-p", help="Port to listen on"),
+    reload: bool = typer.Option(False, "--reload", help="Auto-reload on code changes (dev)"),
+) -> None:
+    """Start the local web UI at http://<host>:<port> (default 127.0.0.1:8080).
+
+    Drag-drop a .txt or paste text in the browser. Everything stays on the
+    loopback interface — no network calls, no telemetry.
+    """
+    try:
+        from ghosttype.api import serve as api_serve
+    except ImportError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1) from e
+
+    console.print(f"[bold cyan]GhostType[/bold cyan] serving on [bold]http://{host}:{port}[/bold]")
+    console.print("[dim]Press Ctrl+C to stop.[/dim]")
+    api_serve(host=host, port=port, reload=reload)
 
 
 if __name__ == "__main__":
