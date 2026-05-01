@@ -1,23 +1,28 @@
 {
-  "version": "0.4.0",
-  "date": "2026-04-30",
+  "version": "0.5.0",
+  "date": "2026-05-02",
   "model": "BAAI/bge-small-en-v1.5",
   "dimensions": 384,
   "slop_corpus": {
-    "n_passages": 975,
+    "n_passages": 2000,
     "sources": {
-      "raid": 975
+      "raid": 893,
+      "ollama_qwen3_14b": 926,
+      "ollama_qwen2.5_3b_seed43": 91,
+      "ollama_qwen2.5_3b": 90
     },
     "models": {
-      "llama-chat": 741,
-      "mpt": 234
+      "llama-chat": 674,
+      "qwen3:14b": 926,
+      "qwen2.5:3b": 181,
+      "mpt": 219
     }
   },
   "human_corpus": {
     "n_passages": 1000,
     "sources": {
-      "falcon": 500,
-      "raid": 500
+      "raid": 500,
+      "falcon": 500
     }
   }
 }

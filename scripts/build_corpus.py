@@ -1,20 +1,31 @@
-"""Build GhostType reference corpus from downloaded datasets."""
+"""Build GhostType reference corpus from downloaded datasets.
+
+Sources:
+- AI: RAID benchmark (llama-chat, mpt) + locally-generated Ollama passages
+- Human: RAID human + Falcon RefinedWeb human
+
+Output: ghosttype/data/slop_corpus.npz, human_corpus.npz, corpus_meta.json
+"""
 
 import json
 import random
 import re
 from collections import Counter
+from datetime import date
 from pathlib import Path
 
 import numpy as np
 from fastembed import TextEmbedding
 
 RAW_DIR = Path("data/raw")
+DATASETS_DIR = Path("data/datasets")
 OUTPUT_DIR = Path("ghosttype/data")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-TARGET_AI = 1000
+TARGET_AI = 2000
 TARGET_HUMAN = 1000
+
+CORPUS_VERSION = "0.5.0"
 
 MIN_WORDS = 30
 MAX_WORDS = 500
@@ -66,13 +77,41 @@ def deduplicate(passages, threshold=0.8):
     return unique
 
 
-def load_passages(filepath):
-    """Load passages from jsonl."""
+def load_passages(filepath, default_source=None):
+    """Load passages from jsonl, optionally tagging records with a default source."""
     passages = []
+    if not Path(filepath).exists():
+        return passages
     with open(filepath, encoding="utf-8") as f:
         for line in f:
-            passages.append(json.loads(line))
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if default_source and "source" not in row:
+                row["source"] = default_source
+            passages.append(row)
     return passages
+
+
+def load_ollama_corpus():
+    """Load all Ollama-generated passages, tagging each with its source directory.
+
+    Each subfolder under data/datasets/ollama_<model>/ contributes its
+    generated_*.jsonl files. The folder name becomes the source tag.
+    """
+    out = []
+    if not DATASETS_DIR.exists():
+        return out
+    for sub in sorted(DATASETS_DIR.iterdir()):
+        if not sub.is_dir() or not sub.name.startswith("ollama_"):
+            continue
+        for jsonl in sorted(sub.glob("generated_*.jsonl")):
+            out.extend(load_passages(jsonl, default_source=sub.name))
+    return out
 
 
 def sample_balanced(passages, target, key="domain"):
@@ -126,40 +165,49 @@ def main():
     random.seed(42)
 
     print("\n1. Loading raw data...")
-    raid_ai = load_passages(RAW_DIR / "raid_ai.jsonl")
-    raid_human = load_passages(RAW_DIR / "raid_human.jsonl")
-    falcon_human = load_passages(RAW_DIR / "falcon_human.jsonl")
+    raid_ai = load_passages(RAW_DIR / "raid_ai.jsonl", default_source="raid")
+    raid_human = load_passages(RAW_DIR / "raid_human.jsonl", default_source="raid")
+    falcon_human = load_passages(RAW_DIR / "falcon_human.jsonl", default_source="falcon")
+    ollama_ai = load_ollama_corpus()
 
     print(f"   RAID AI: {len(raid_ai)}")
     print(f"   RAID Human: {len(raid_human)}")
     print(f"   Falcon Human: {len(falcon_human)}")
+    print(f"   Ollama AI: {len(ollama_ai)}  ({len({p['source'] for p in ollama_ai})} dataset(s))")
 
     print("\n2. Applying quality filters...")
     raid_ai = [p for p in raid_ai if quality_filter(p["text"])]
     raid_human = [p for p in raid_human if quality_filter(p["text"])]
     falcon_human = [p for p in falcon_human if quality_filter(p["text"])]
+    ollama_ai = [p for p in ollama_ai if quality_filter(p["text"])]
 
     print(f"   RAID AI after filter: {len(raid_ai)}")
     print(f"   RAID Human after filter: {len(raid_human)}")
     print(f"   Falcon Human after filter: {len(falcon_human)}")
+    print(f"   Ollama AI after filter: {len(ollama_ai)}")
 
     print("\n3. Deduplicating...")
     raid_ai = deduplicate(raid_ai)
     raid_human = deduplicate(raid_human)
     falcon_human = deduplicate(falcon_human)
+    ollama_ai = deduplicate(ollama_ai)
 
     print(f"   RAID AI after dedup: {len(raid_ai)}")
     print(f"   RAID Human after dedup: {len(raid_human)}")
     print(f"   Falcon Human after dedup: {len(falcon_human)}")
+    print(f"   Ollama AI after dedup: {len(ollama_ai)}")
 
     print(f"\n4. Sampling {TARGET_AI} AI + {TARGET_HUMAN} human passages...")
 
-    ai_passages = sample_balanced(raid_ai, TARGET_AI, key="model")
+    ai_pool = raid_ai + ollama_ai
+    ai_passages = sample_balanced(ai_pool, TARGET_AI, key="source")
     human_pool = raid_human + falcon_human
     human_passages = sample_balanced(human_pool, TARGET_HUMAN, key="source")
 
     print(f"   AI passages: {len(ai_passages)}")
     print(f"   Human passages: {len(human_passages)}")
+    print(f"   AI source mix: {dict(Counter(p['source'] for p in ai_passages))}")
+    print(f"   Human source mix: {dict(Counter(p['source'] for p in human_passages))}")
 
     ai_texts = [p["text"] for p in ai_passages]
     human_texts = [p["text"] for p in human_passages]
@@ -175,14 +223,14 @@ def main():
     np.savez(OUTPUT_DIR / "human_corpus.npz", embeddings=human_embeddings)
 
     meta = {
-        "version": "0.4.0",
-        "date": "2026-04-30",
+        "version": CORPUS_VERSION,
+        "date": date.today().isoformat(),
         "model": "BAAI/bge-small-en-v1.5",
         "dimensions": 384,
         "slop_corpus": {
             "n_passages": len(ai_passages),
             "sources": dict(Counter(p["source"] for p in ai_passages)),
-            "models": dict(Counter(p["model"] for p in ai_passages)),
+            "models": dict(Counter(p.get("model", "unknown") for p in ai_passages)),
         },
         "human_corpus": {
             "n_passages": len(human_passages),
