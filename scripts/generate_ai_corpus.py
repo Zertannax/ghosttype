@@ -10,7 +10,8 @@ import json
 import random
 import sys
 import time
-from datetime import datetime
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -172,6 +173,24 @@ def quality_filter(text: str) -> bool:
     return True
 
 
+def build_selection(count: int, all_prompts: list[dict], seed: int) -> list[dict]:
+    """Build a list of `count` prompt items.
+
+    With count <= len(prompts): random sample without replacement (one shot per prompt).
+    With count > len(prompts): tile the pool ceil(count / N) times, shuffle, truncate.
+    Each prompt gets a near-equal share, with variation coming from temperature=0.8
+    in the Ollama call.
+    """
+    rng = random.Random(seed)
+    if count <= len(all_prompts):
+        return rng.sample(all_prompts, count)
+
+    repetitions = (count + len(all_prompts) - 1) // len(all_prompts)
+    expanded = list(all_prompts) * repetitions
+    rng.shuffle(expanded)
+    return expanded[:count]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate AI corpus via Ollama")
     parser.add_argument("--model", default="qwen3:14b", help="Ollama model name")
@@ -184,36 +203,49 @@ def main() -> None:
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Select prompts
-    random.seed(args.seed)
-    selected = random.sample(ALL_PROMPTS, min(args.count, len(ALL_PROMPTS)))
+    selected = build_selection(args.count, ALL_PROMPTS, args.seed)
 
-    # Resume support
+    # Resume support — count occurrences of each prompt already on disk so we can
+    # skip the right number of repeats when the run is restarted.
     suffix = "pilot" if args.pilot else "full"
     output_file = output_dir / f"generated_{suffix}.jsonl"
-    existing = set()
+    existing_counts: Counter[str] = Counter()
     if output_file.exists():
         with open(output_file, "r", encoding="utf-8") as f:
             for line in f:
-                data = json.loads(line)
-                existing.add(data["prompt"])
-        print(f"Resuming: {len(existing)} passages already generated")
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                p = data.get("prompt")
+                if isinstance(p, str):
+                    existing_counts[p] += 1
+        total_existing = sum(existing_counts.values())
+        print(f"Resuming: {total_existing} passages already generated "
+              f"across {len(existing_counts)} prompts")
 
     client = httpx.Client()
     generated = []
     skipped = 0
+    seen_in_run: Counter[str] = Counter()
 
     print(f"Generating {len(selected)} passages with {args.model}...")
     print(f"Output: {output_file}")
 
     for i, item in enumerate(selected, 1):
-        if item["prompt"] in existing:
-            print(f"[{i}/{len(selected)}] SKIP (already exists)")
+        prompt = item["prompt"]
+        seen_in_run[prompt] += 1
+        # Skip the first N occurrences of each prompt that are already on disk.
+        if seen_in_run[prompt] <= existing_counts[prompt]:
+            print(f"[{i}/{len(selected)}] SKIP (already on disk)")
             continue
 
-        print(f"[{i}/{len(selected)}] {item['domain']}: {item['prompt'][:50]}...", end=" ")
+        print(f"[{i}/{len(selected)}] {item['domain']}: {prompt[:50]}...", end=" ")
         start = time.time()
-        text = generate_passage(client, item["prompt"], args.model)
+        text = generate_passage(client, prompt, args.model)
         elapsed = time.time() - start
 
         if text is None or not quality_filter(text):
@@ -223,22 +255,22 @@ def main() -> None:
 
         record = {
             "text": text,
-            "prompt": item["prompt"],
+            "prompt": prompt,
             "domain": item["domain"],
             "model": args.model,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "word_count": len(text.split()),
         }
         generated.append(record)
 
-        # Append immediately
         with open(output_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
         print(f"OK ({len(text.split())} words, {elapsed:.1f}s)")
 
     print(f"\nDone! Generated: {len(generated)}, Skipped: {skipped}")
-    print(f"Total in file: {len(existing) + len(generated)}")
+    total_now = sum(existing_counts.values()) + len(generated)
+    print(f"Total in file: {total_now}")
     print(f"Output: {output_file}")
 
 
