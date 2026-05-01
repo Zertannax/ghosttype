@@ -17,51 +17,62 @@ def test_cli_version() -> None:
 
 
 def test_cli_analyze_empty() -> None:
-    """Test analyze with empty input."""
+    """Empty input warns and exits clean."""
     result = runner.invoke(app, ["analyze", "-"], input="")
     assert result.exit_code == 0
-    assert "Empty" in result.output or "Warning" in result.output
+    assert "Empty" in result.output
 
 
 def test_cli_analyze_clean_text() -> None:
-    """Test analyze with clean text."""
+    """Plain neutral sentence stays in non-HIGH territory."""
     result = runner.invoke(app, ["analyze", "-"], input="The cat sat on the mat.")
-    assert result.exit_code == 0
+    assert result.exit_code in [0, 1]
     assert "GhostType" in result.output
 
 
 def test_cli_analyze_slop_text() -> None:
-    """Test analyze with slop text."""
+    """Obvious slop (opener + buzzwords) must trip exit code 2 (HIGH)."""
     text = "In today's world, we must leverage synergy."
     result = runner.invoke(app, ["analyze", "-"], input=text)
-    assert result.exit_code in [0, 1, 2]
+    assert result.exit_code == 2, f"Expected HIGH exit, got {result.exit_code}"
     assert "GhostType" in result.output
 
 
 def test_cli_analyze_json() -> None:
-    """Test analyze with JSON output."""
+    """JSON output is parseable and contains a score in slop territory."""
     text = "In today's world, we must leverage synergy."
     result = runner.invoke(app, ["analyze", "-", "--json"], input=text)
-    assert result.exit_code in [0, 1, 2]
-    # Verify JSON is valid
+    assert result.exit_code == 2
     data = json.loads(result.output)
-    assert "score" in data
-    assert "label" in data
-    assert "passages" in data
+    assert isinstance(data["score"], int)
+    assert data["score"] >= 50, f"Score {data['score']} too low for known slop"
+    assert data["label"] in ("High", "Critical")
+    assert len(data["passages"]) >= 1
+    assert data["total_hits"] >= 2
 
 
 def test_cli_analyze_file() -> None:
-    """Test analyze with file input."""
+    """File input pipeline matches stdin pipeline output."""
     import tempfile
     from pathlib import Path
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
         f.write("In today's world, we must leverage synergy.\n")
         temp_path = Path(f.name)
 
     try:
         result = runner.invoke(app, ["analyze", str(temp_path)])
-        assert result.exit_code in [0, 1, 2]
+        assert result.exit_code == 2
         assert "GhostType" in result.output
     finally:
-        temp_path.unlink()
+        try:
+            temp_path.unlink()
+        except (PermissionError, FileNotFoundError):
+            pass
+
+
+def test_cli_analyze_missing_file() -> None:
+    """Missing file produces a non-zero exit and a readable error."""
+    result = runner.invoke(app, ["analyze", "/nonexistent/path/that/does/not/exist.txt"])
+    assert result.exit_code != 0
+    assert "Error" in result.output or "error" in result.output

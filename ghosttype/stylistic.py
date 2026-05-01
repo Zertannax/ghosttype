@@ -36,22 +36,30 @@ def extract_features(passage: Passage) -> StylisticFeatures:
     paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
 
     # Sentence length variance (AI tends uniform lengths)
-    if len(sentences) > 1:
+    # Skip the test for recipe/list/instruction-style text where short uniform
+    # sentences are the natural form, not an AI tell.
+    if len(sentences) >= 3:
         lengths = [len(s) for s in sentences]
         avg_len = sum(lengths) / len(lengths)
-        variance = sum((length - avg_len) ** 2 for length in lengths) / len(lengths)
-        # Normalize: low variance = high score
-        sentence_variance = min(1.0, max(0.0, 1.0 - (variance / 500)))
+        if avg_len < 30:
+            # Short-form text (recipes, instructions): variance signal is meaningless.
+            sentence_variance = 0.5
+        else:
+            variance = sum((length - avg_len) ** 2 for length in lengths) / len(lengths)
+            sentence_variance = min(1.0, max(0.0, 1.0 - (variance / 500)))
     else:
         sentence_variance = 0.5
 
     # Paragraph length variance (AI tends very uniform paragraph lengths)
-    if len(paragraphs) > 1:
+    if len(paragraphs) >= 3:
         para_word_counts = [len(p.split()) for p in paragraphs]
         avg_para = sum(para_word_counts) / len(para_word_counts)
-        para_variance = sum((c - avg_para) ** 2 for c in para_word_counts) / len(para_word_counts)
-        # Very low variance = strong AI indicator (normalize 0-300 range)
-        paragraph_variance = min(1.0, max(0.0, 1.0 - (para_variance / 300)))
+        if avg_para < 20:
+            # Short paragraphs (lists, bullets): variance signal is meaningless.
+            paragraph_variance = 0.5
+        else:
+            para_variance = sum((c - avg_para) ** 2 for c in para_word_counts) / len(para_word_counts)
+            paragraph_variance = min(1.0, max(0.0, 1.0 - (para_variance / 300)))
     else:
         paragraph_variance = 0.5
 
@@ -76,8 +84,8 @@ def extract_features(passage: Passage) -> StylisticFeatures:
     common_words = {
         "the", "be", "to", "of", "and", "a", "in", "that", "have", "i",
         "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
-        "le", "la", "de", "et", "un", "une", "est", "dans", "que", "pour",
-        "pas", "sur", "ce", "se", "il", "au", "plus", "par", "avec", "nous",
+        "this", "but", "his", "by", "from", "they", "we", "say", "her", "she",
+        "or", "an", "will", "my", "one", "all", "would", "there", "their", "what",
     }
     if words:
         rare_count = sum(1 for w in words if w.lower() not in common_words)
@@ -86,13 +94,15 @@ def extract_features(passage: Passage) -> StylisticFeatures:
         rare_word_ratio = 0.5
 
     # Formal word ratio (AI tends formal vocabulary)
-    formal_words = [
+    # Note: "however"/"therefore" included here because frequency (rather than
+    # presence) is the signal. Bare prepositions like "par"/"dans" were removed —
+    # they are too common to be AI markers on their own.
+    formal_words = {
         "furthermore", "moreover", "consequently", "therefore", "however",
         "nevertheless", "nonetheless", "alternatively", "specifically",
         "particularly", "essentially", "fundamentally", "significantly",
-        "par", "ailleurs", "dans", "mesure", "toutefois", "cependant",
-        "effectivement", "notamment", "particulierement", "fondamentalement",
-    ]
+        "notably", "accordingly", "subsequently", "hence", "thus",
+    }
     if words:
         formal_count = sum(1 for w in words if w.lower() in formal_words)
         formal_word_ratio = min(1.0, formal_count / len(words) * 5)
@@ -105,8 +115,8 @@ def extract_features(passage: Passage) -> StylisticFeatures:
         "stupid", "ridiculous", "fantastic", "horrible", "beautiful", "ugly",
         "excited", "bored", "angry", "happy", "sad", "frustrated", "thrilled",
         "devastated", "ecstatic", "furious", "delighted", "miserable",
-        "amour", "haine", "merveilleux", "génial", "ridicule",
-        "magnifique", "dégueulasse", "heureux", "triste", "furieux", "ravi",
+        "gorgeous", "dreadful", "magnificent", "appalling", "splendid",
+        "joyful", "heartbroken", "outraged", "elated", "disgusted",
     }
     if words:
         emotional_count = sum(1 for w in words if w.lower() in emotional_words)

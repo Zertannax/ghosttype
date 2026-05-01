@@ -25,9 +25,9 @@ PATTERNS = [
     {
         "id": "AC-04",
         "category": "academic_transition",
-        "regex": r"furthermore|moreover|in addition|consequently|therefore|however|nevertheless|in contrast|similarly",
+        "regex": r"\bfurthermore\b|\bmoreover\b|\bin addition,|\bconsequently,|\bnevertheless\b|\bin contrast,|\bsimilarly,",
         "severity": 0.5,
-        "description": "Academic transition words",
+        "description": "Academic transition words (excludes 'however'/'therefore' which are too common in human prose; require trailing comma where ambiguous)",
     },
     {
         "id": "AC-05",
@@ -81,9 +81,9 @@ PATTERNS = [
     {
         "id": "AC-12",
         "category": "academic_complexity",
-        "regex": r"multifaceted|nuanced|complex|complicated|intricate|sophisticated",
+        "regex": r"\bmultifaceted\b|\bnuanced\b|\bintricate\b|\bsophisticated\b",
         "severity": 0.5,
-        "description": "Complexity adjective cluster",
+        "description": "Complexity adjective cluster (excludes 'complex'/'complicated' — too common in human prose)",
     },
     {
         "id": "AC-13",
@@ -95,9 +95,9 @@ PATTERNS = [
     {
         "id": "AC-14",
         "category": "academic_comparison",
-        "regex": r"in comparison|by contrast|conversely|on the contrary|whereas|while",
+        "regex": r"\bin comparison\b|\bby contrast\b|\bconversely\b|\bon the contrary\b",
         "severity": 0.4,
-        "description": "Comparative academic transition",
+        "description": "Comparative academic transition (excludes 'while'/'whereas' — too common in human prose)",
     },
     {
         "id": "AC-15",

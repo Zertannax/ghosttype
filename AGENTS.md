@@ -136,7 +136,7 @@ ghosttype/
 - `--rewrite` via Ollama
 - `serve` (FastAPI)
 - Config file
-- French support
+- (French support — explicitly out of scope, see ROADMAP)
 
 ## GHCLI et Collaboration
 

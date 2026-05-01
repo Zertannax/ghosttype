@@ -8,6 +8,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from ghosttype import __version__
 from ghosttype.heuristics.engine import HeuristicEngine
 from ghosttype.preprocessor import preprocess
 from ghosttype.scorer import AnalysisResult, aggregate
@@ -47,13 +48,13 @@ def _render_rich_output(result: AnalysisResult) -> None:
     # Header
     console.print()
     console.print("=" * 50)
-    console.print("  [bold]GhostType[/bold] - AI Slop Detector v0.5.0")
+    console.print(f"  [bold]GhostType[/bold] - AI Slop Detector v{__version__}")
     console.print("=" * 50)
     console.print()
 
     # Score display
     score_style = _get_score_style(result.score)
-    score_bar = "â–ˆ" * (result.score // 10) + "â–‘" * (10 - result.score // 10)
+    score_bar = "█" * (result.score // 10) + "░" * (10 - result.score // 10)
 
     console.print(f"  Slop Score : [{score_style}]{result.score}/100[/{score_style}]  {score_bar}  {result.label.upper()}")
     console.print(f"  Patterns   : {result.total_hits} detected")
@@ -101,7 +102,7 @@ def _render_rich_output(result: AnalysisResult) -> None:
         console.print(hits_table)
         console.print()
     else:
-        console.print("[green]âœ“[/green] No AI slop patterns detected. Text looks clean!")
+        console.print("[green]✓[/green] No AI slop patterns detected. Text looks clean!")
         console.print()
 
     console.print("=" * 50)
@@ -176,7 +177,7 @@ def analyze(
 @app.command()
 def version() -> None:
     """Show version information."""
-    console.print("GhostType v0.5.0")
+    console.print(f"GhostType v{__version__}")
 
 
 if __name__ == "__main__":

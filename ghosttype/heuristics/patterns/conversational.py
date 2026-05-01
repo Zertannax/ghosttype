@@ -88,16 +88,16 @@ PATTERNS = [
     {
         "id": "CS-13",
         "category": "conversational_clarity",
-        "regex": r"clearly|obviously|undoubtedly|without a doubt|it's clear that",
+        "regex": r"\bobviously,|\bundoubtedly\b|\bwithout a doubt\b|\bit'?s clear that\b|\bclearly,\s+(?:we|the|this|it)",
         "severity": 0.4,
-        "description": "Unearned certainty",
+        "description": "Unearned certainty (require comma/context — bare 'clearly'/'obviously' too common)",
     },
     {
         "id": "CS-14",
         "category": "conversational_journey",
-        "regex": r"journey|process|path forward|way forward|road ahead",
+        "regex": r"\b(?:incredible|amazing|exciting|transformative) journey\b|\bjourney (?:of discovery|towards|together|begins)\b|\bpath forward\b|\bway forward\b|\broad ahead\b",
         "severity": 0.4,
-        "description": "Metaphorical journey framing",
+        "description": "Metaphorical journey framing (require context — bare 'journey'/'process' matched all human prose)",
     },
     {
         "id": "CS-15",

@@ -46,9 +46,9 @@ PATTERNS = [
     {
         "id": "TC-07",
         "category": "technical_note",
-        "regex": r"note that|important|warning|caution|tip:|note:|important:",
+        "regex": r"\bnote that\b|^\s*(?:warning|caution|tip|note|important):|\bimportant to note\b",
         "severity": 0.4,
-        "description": "Callout box marker",
+        "description": "Callout box marker (anchored — bare 'important' was a major false positive)",
     },
     {
         "id": "TC-08",
@@ -74,9 +74,9 @@ PATTERNS = [
     {
         "id": "TC-11",
         "category": "technical_configuration",
-        "regex": r"configuration|settings|parameters|options|properties",
+        "regex": r"\bconfiguration (?:options|settings|parameters|file)\b|\bdefault (?:settings|parameters|configuration)\b|\bavailable (?:options|parameters|properties)\b",
         "severity": 0.4,
-        "description": "Configuration reference",
+        "description": "Configuration reference (require multi-word context — bare nouns matched any tech doc)",
     },
     {
         "id": "TC-12",
@@ -95,15 +95,15 @@ PATTERNS = [
     {
         "id": "TC-14",
         "category": "technical_performance",
-        "regex": r"performance|optimization|efficiency|speed|latency|throughput",
+        "regex": r"\bperformance (?:gains?|improvements?|benefits?|metrics?|optimization)\b|\boptimization (?:strategy|techniques?|approach)\b|\bsignificantly (?:faster|improved|reduced)\b",
         "severity": 0.4,
-        "description": "Performance metric",
+        "description": "Performance metric (require multi-word phrase — bare 'performance'/'optimization' too common)",
     },
     {
         "id": "TC-15",
         "category": "technical_verification",
-        "regex": r"to verify|to confirm|to check|to test|to ensure",
+        "regex": r"\bto verify (?:that|the|your)\b|\bto confirm (?:that|the|your)\b|\bto ensure (?:that|the|your|proper)\b",
         "severity": 0.4,
-        "description": "Verification instruction",
+        "description": "Verification instruction (require object — bare 'to test'/'to check' matched everything)",
     },
 ]

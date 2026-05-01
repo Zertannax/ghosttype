@@ -94,9 +94,9 @@ Final score = weighted combination of three signals:
 
 | Code | Meaning |
 |------|---------|
-| 0 | Score < 40 (clean) |
-| 1 | Score 40-70 (moderate) |
-| 2 | Score > 70 (high slop) |
+| 0 | Score <= 40 (Clean / Mild) |
+| 1 | Score 41-60 (Moderate) |
+| 2 | Score >= 61 (High / Critical) |
 
 Exit codes enable shell scripting:
 ```bash
@@ -117,7 +117,7 @@ ghosttype analyze draft.txt || echo "too sloppy"
 | Conversational Slop | 15 | ChatGPT neutral framing, fake humility, hedging |
 | Academic Markers | 15 | Research paper conventions, passive voice, literature review |
 | Technical Markers | 15 | Documentation steps, commands, configuration |
-| **Total** | **~110** | Some French patterns exist but are not prioritized |
+| **Total** | **~110** | English-only |
 
 ## Reference Corpora
 
@@ -168,8 +168,7 @@ ghosttype/
 │   │       ├── journalist.py
 │   │       ├── conversational.py
 │   │       ├── academic.py
-│   │       ├── technical.py
-│   │       └── french_*.py
+│   │       └── technical.py
 │   └── data/
 │       ├── slop_corpus.npz     # AI reference embeddings (975, 384)
 │       ├── human_corpus.npz    # Human reference embeddings (1000, 384)

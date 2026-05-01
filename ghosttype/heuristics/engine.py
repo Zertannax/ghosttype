@@ -33,7 +33,7 @@ class PatternDefinition:
     ):
         self.pattern_id = pattern_id
         self.category = category
-        self.regex = re.compile(regex, re.IGNORECASE)
+        self.regex = re.compile(regex, re.IGNORECASE | re.MULTILINE)
         self.severity = severity
         self.description = description
 
@@ -74,6 +74,10 @@ class HeuristicEngine:
     def analyze(self, passages: list[Passage]) -> dict[int, list[PatternHit]]:
         """Analyze passages and return hits per passage index.
 
+        Hits sharing the same (matched_text lowercased, start_char) are deduplicated:
+        a single phrase like "in summary" listed in three categories must not be
+        counted three times by the scorer.
+
         Args:
             passages: List of preprocessed passages.
 
@@ -87,9 +91,27 @@ class HeuristicEngine:
             for pattern in self.patterns:
                 pattern_hits = pattern.detect(passage.text, passage.start_char)
                 hits.extend(pattern_hits)
-            results[passage.index] = hits
+            results[passage.index] = self._dedupe_hits(hits)
 
         return results
+
+    @staticmethod
+    def _dedupe_hits(hits: list[PatternHit]) -> list[PatternHit]:
+        """Drop overlapping hits at the same starting position; keep strongest signal.
+
+        Two hits "overlap" when they start at the same character. The same phrase
+        ("in summary", "it is important") often appears in 3-4 pattern categories
+        with slightly different trailing punctuation — this collapses them into one.
+
+        Strongest = largest absolute severity. Negative severities (human indicators)
+        are preserved when they outrank positive duplicates at the same span.
+        """
+        best: dict[int, PatternHit] = {}
+        for hit in hits:
+            current = best.get(hit.start_char)
+            if current is None or abs(hit.severity) > abs(current.severity):
+                best[hit.start_char] = hit
+        return list(best.values())
 
     def get_categories(self) -> set[str]:
         """Return all unique category names."""

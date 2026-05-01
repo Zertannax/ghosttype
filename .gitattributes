@@ -1,0 +1,22 @@
+# Default to LF in the repo, normalize on commit.
+* text=auto eol=lf
+
+# Force LF for code/text we care about
+*.py    text eol=lf
+*.md    text eol=lf
+*.toml  text eol=lf
+*.json  text eol=lf
+*.jsonl text eol=lf
+*.txt   text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+
+# PowerShell scripts stay CRLF (Windows-native)
+*.ps1   text eol=crlf
+
+# Binary — never touch
+*.npz   binary
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.zip   binary

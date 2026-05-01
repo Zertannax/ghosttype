@@ -1,6 +1,6 @@
 """Tests for text preprocessor."""
 
-from ghosttype.preprocessor import preprocess
+from ghosttype.preprocessor import _segment_sentences, preprocess
 
 
 def test_preprocess_simple_paragraphs() -> None:
@@ -46,11 +46,30 @@ def test_preprocess_whitespace_only() -> None:
     assert passages == []
 
 
-def test_preprocess_fallback_sentences() -> None:
-    """Test sentence fallback for no paragraphs."""
+def test_preprocess_single_block_stays_one_passage() -> None:
+    """Text without blank lines is a single paragraph (paragraph segmenter wins)."""
     text = "First sentence. Second sentence! Third sentence?"
     passages = preprocess(text)
+    assert len(passages) == 1
+    assert passages[0].text == text
 
-    # Should still work with paragraph split (single paragraph)
-    assert len(passages) >= 1
-    assert "First sentence." in passages[0].text
+
+def test_segment_sentences_splits_on_punctuation() -> None:
+    """Direct test of the sentence segmenter (unreachable via preprocess in practice)."""
+    text = "First sentence. Second sentence! Third sentence?"
+    passages = _segment_sentences(text)
+    assert len(passages) == 3
+    assert passages[0].text.startswith("First")
+    assert passages[1].text.startswith("Second")
+    assert passages[2].text.startswith("Third")
+
+
+def test_preprocess_strips_html_entities() -> None:
+    """Named HTML entities &amp; &lt; &gt; are decoded."""
+    text = "<p>Tom &amp; Jerry &lt;3 each other &gt; all</p>"
+    passages = preprocess(text)
+    assert len(passages) == 1
+    assert "&amp;" not in passages[0].text
+    assert "&" in passages[0].text  # decoded
+    assert "<" in passages[0].text  # decoded from &lt;
+    assert ">" in passages[0].text  # decoded from &gt;
