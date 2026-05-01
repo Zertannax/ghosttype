@@ -330,3 +330,93 @@ def test_cli_threshold_in_batch_mode(tmp_path) -> None:
     # Threshold 40: at least the slop file should exceed → exit 2
     result_low = runner.invoke(app, ["analyze", str(tmp_path), "--threshold", "40"])
     assert result_low.exit_code == 2
+
+
+# ---------- --quiet flag ----------
+
+
+def test_cli_quiet_single_file_prints_only_score(tmp_path) -> None:
+    """--quiet emits just the integer score, no banner / table."""
+    f = tmp_path / "x.txt"
+    f.write_text("In today's world, we leverage synergy.", encoding="utf-8")
+    result = runner.invoke(app, ["analyze", str(f), "--quiet"])
+    assert result.exit_code == 2
+    # Output should be a single integer line
+    lines = [line for line in result.output.splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert lines[0].strip().isdigit()
+    assert 0 <= int(lines[0]) <= 100
+
+
+def test_cli_quiet_stdin_prints_only_score() -> None:
+    """--quiet works on stdin too."""
+    result = runner.invoke(app, ["analyze", "-", "--quiet"], input="The cat sat on the mat.")
+    assert result.exit_code == 0
+    lines = [line for line in result.output.splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert lines[0].strip().isdigit()
+
+
+def test_cli_quiet_batch_prints_score_tab_path(tmp_path) -> None:
+    """--quiet on a directory emits one '<score>\\t<path>' line per file."""
+    (tmp_path / "a.txt").write_text("Plain text one.", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("Plain text two.", encoding="utf-8")
+    result = runner.invoke(app, ["analyze", str(tmp_path), "--quiet"])
+    lines = [line for line in result.output.splitlines() if line.strip()]
+    assert len(lines) == 2
+    for line in lines:
+        score_str, path = line.split("\t")
+        assert score_str.isdigit()
+        assert path.endswith(".txt")
+
+
+# ---------- patterns subcommands ----------
+
+
+def test_cli_patterns_list() -> None:
+    """`patterns list` shows all patterns grouped by category."""
+    result = runner.invoke(app, ["patterns", "list"])
+    assert result.exit_code == 0
+    assert "buzzword" in result.output
+    assert "BZ-05" in result.output
+    assert "OP-01" in result.output
+    assert "CR-01" in result.output
+
+
+def test_cli_patterns_list_filtered_by_category() -> None:
+    """--category filters to matching prefix."""
+    result = runner.invoke(app, ["patterns", "list", "--category", "buzzword"])
+    assert result.exit_code == 0
+    assert "BZ-01" in result.output
+    # Patterns from other categories should not appear in the listing
+    assert "OP-01" not in result.output
+
+
+def test_cli_patterns_list_unknown_category_exits_nonzero() -> None:
+    result = runner.invoke(app, ["patterns", "list", "--category", "doesnotexist"])
+    assert result.exit_code != 0
+    assert "no category" in result.output.lower()
+
+
+def test_cli_patterns_describe_known_id() -> None:
+    """`patterns describe BZ-05` shows regex, severity, description."""
+    result = runner.invoke(app, ["patterns", "describe", "BZ-05"])
+    assert result.exit_code == 0
+    assert "BZ-05" in result.output
+    assert "Severity" in result.output
+    assert "Regex" in result.output
+    # The actual regex content
+    assert "delve" in result.output
+
+
+def test_cli_patterns_describe_lowercase_input() -> None:
+    """Pattern IDs are matched case-insensitively."""
+    result = runner.invoke(app, ["patterns", "describe", "bz-05"])
+    assert result.exit_code == 0
+    assert "BZ-05" in result.output
+
+
+def test_cli_patterns_describe_unknown_id_exits_nonzero() -> None:
+    result = runner.invoke(app, ["patterns", "describe", "XX-99"])
+    assert result.exit_code != 0
+    assert "not found" in result.output.lower()

@@ -118,9 +118,13 @@ def create_app() -> FastAPI:
 
     @app.get("/favicon.ico", response_model=None)
     async def favicon():  # type: ignore[no-untyped-def]
-        ico = WEB_DIR / "favicon.svg"
-        if ico.exists():
-            return FileResponse(str(ico), media_type="image/svg+xml")
+        # Prefer the PNG logo; fall back to the SVG emoji if logo isn't bundled.
+        png = WEB_DIR / "logo.png"
+        if png.exists():
+            return FileResponse(str(png), media_type="image/png")
+        svg = WEB_DIR / "favicon.svg"
+        if svg.exists():
+            return FileResponse(str(svg), media_type="image/svg+xml")
         return PlainTextResponse("", status_code=204)
 
     return app

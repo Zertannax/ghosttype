@@ -110,6 +110,19 @@ def _get_score_style(score: int) -> str:
     return "bold red reverse"
 
 
+def _get_bar_color(score: int) -> str:
+    """Plain rich color name for the filled portion of the score bar."""
+    if score <= 20:
+        return "green"
+    if score <= 40:
+        return "yellow"
+    if score <= 60:
+        return "dark_orange"
+    if score <= 80:
+        return "red"
+    return "red"
+
+
 def _override_exit_code(result: AnalysisResult, threshold: int | None) -> int:
     """Resolve the final exit code.
 
@@ -214,9 +227,12 @@ def _render_rich_output(result: AnalysisResult) -> None:
     console.print()
 
     score_style = _get_score_style(result.score)
-    score_bar = "█" * (result.score // 10) + "░" * (10 - result.score // 10)
+    bar_color = _get_bar_color(result.score)
+    filled = "█" * (result.score // 10)
+    empty = "░" * (10 - result.score // 10)
+    score_bar = f"[{bar_color}]{filled}[/{bar_color}][dim]{empty}[/dim]"
 
-    console.print(f"  Slop Score : [{score_style}]{result.score}/100[/{score_style}]  {score_bar}  {result.label.upper()}")
+    console.print(f"  Slop Score : [{score_style}]{result.score}/100[/{score_style}]  {score_bar}  [{score_style}]{result.label.upper()}[/{score_style}]")
     console.print(f"  Patterns   : {result.total_hits} detected")
     console.print(f"  Passages   : {len(result.passages)} analyzed")
     console.print()
@@ -415,6 +431,7 @@ _recursive_opt = typer.Option(False, "--recursive", "-r", help="Recurse into sub
 _ext_opt = typer.Option(None, "--ext", help="Comma-separated extensions for directory mode (default: txt,md)")
 _explain_opt = typer.Option(False, "--explain", help="Show score breakdown and per-pattern rationale")
 _threshold_opt = typer.Option(None, "--threshold", help="Score > N exits with HIGH (2). Bypasses default 3-bucket exit code.")
+_quiet_opt = typer.Option(False, "--quiet", "-q", help="Print only the integer score (suppresses other output)")
 
 
 @app.command()
@@ -426,6 +443,7 @@ def analyze(
     ext: str = _ext_opt,
     explain: bool = _explain_opt,
     threshold: int = _threshold_opt,
+    quiet: bool = _quiet_opt,
 ) -> None:
     """Analyze a file, directory, or glob pattern for AI slop patterns.
 
@@ -455,11 +473,15 @@ def analyze(
             raise typer.Exit(code=1) from e
         result = _analyze_text(text)
         if result is None:
-            console.print("[yellow]Warning: Empty input[/yellow]")
+            if not quiet:
+                console.print("[yellow]Warning: Empty input[/yellow]")
             raise typer.Exit(code=0)
-        _emit_single(result, fmt, label="-")
-        if explain and fmt == "rich":
-            _render_explanation(result, threshold)
+        if quiet:
+            print(result.score)
+        else:
+            _emit_single(result, fmt, label="-")
+            if explain and fmt == "rich":
+                _render_explanation(result, threshold)
         raise typer.Exit(code=_override_exit_code(result, threshold))
 
     paths = _resolve_target(target, recursive=recursive, exts=extensions)
@@ -482,17 +504,21 @@ def analyze(
 
         result = _analyze_text(text)
         if result is None:
-            console.print(f"[yellow]Warning: {path} is empty.[/yellow]")
+            if not quiet:
+                console.print(f"[yellow]Warning: {path} is empty.[/yellow]")
             raise typer.Exit(code=0)
 
-        _emit_single(result, fmt, label=str(path))
-        if explain and fmt == "rich":
-            _render_explanation(result, threshold)
+        if quiet:
+            print(result.score)
+        else:
+            _emit_single(result, fmt, label=str(path))
+            if explain and fmt == "rich":
+                _render_explanation(result, threshold)
         raise typer.Exit(code=_override_exit_code(result, threshold))
 
-    # Batch path: progress bar (only in rich mode) + chosen formatter.
+    # Batch path: progress bar (only in rich mode + non-quiet) + chosen formatter.
     results: list[tuple[Path, AnalysisResult | None]] = []
-    show_progress = fmt == "rich"
+    show_progress = fmt == "rich" and not quiet
 
     if show_progress:
         progress_columns = [
@@ -510,14 +536,18 @@ def analyze(
     else:
         results = [(path, _analyze_one_file(path)) for path in paths]
 
-    _emit_batch(results, fmt)
-
-    if explain and fmt == "rich":
-        for path, result in results:
-            if result is None:
-                continue
-            console.print(f"\n[bold cyan]── {path} ──[/bold cyan]")
-            _render_explanation(result, threshold)
+    if quiet:
+        for path, r in results:
+            if r is not None:
+                print(f"{r.score}\t{path}")
+    else:
+        _emit_batch(results, fmt)
+        if explain and fmt == "rich":
+            for path, result in results:
+                if result is None:
+                    continue
+                console.print(f"\n[bold cyan]── {path} ──[/bold cyan]")
+                _render_explanation(result, threshold)
 
     scored_exits = [
         _override_exit_code(r, threshold) for _, r in results if r is not None
@@ -578,11 +608,76 @@ def version() -> None:
     console.print(f"GhostType v{__version__}")
 
 
+# ---------- patterns subcommands ----------
+
+patterns_app = typer.Typer(help="Browse the detection patterns.", no_args_is_help=True)
+app.add_typer(patterns_app, name="patterns")
+
+
+@patterns_app.command("list")
+def patterns_list(
+    category: str = typer.Option(None, "--category", "-c", help="Filter by category prefix (e.g. buzzword, opener)"),
+) -> None:
+    """List all detection patterns grouped by category."""
+    by_category: dict[str, list[dict]] = {}
+    for p in ALL_PATTERNS:
+        by_category.setdefault(p["category"], []).append(p)
+
+    keys = sorted(by_category)
+    if category:
+        keys = [k for k in keys if k.startswith(category.lower())]
+        if not keys:
+            console.print(f"[red]No category matches '{category}'.[/red]")
+            raise typer.Exit(code=1)
+
+    total = 0
+    for cat in keys:
+        items = by_category[cat]
+        total += len(items)
+        console.print(f"\n[bold cyan]{cat}[/bold cyan]  [dim]({len(items)})[/dim]")
+        table = Table(show_header=False, box=None, padding=(0, 1))
+        table.add_column("ID", style="dim", width=8)
+        table.add_column("Sev", justify="right", width=6)
+        table.add_column("Description", overflow="fold")
+        for p in items:
+            sev = p["severity"]
+            sev_color = "red" if sev >= 0.7 else "yellow" if sev >= 0.5 else "dim"
+            sev_str = f"[{sev_color}]{sev:+.1f}[/{sev_color}]" if sev != 0 else f"{sev:+.1f}"
+            table.add_row(p["id"], sev_str, p.get("description", ""))
+        console.print(table)
+
+    console.print(f"\n[dim]{total} pattern(s) across {len(keys)} categor{'ies' if len(keys) != 1 else 'y'}.[/dim]")
+
+
+@patterns_app.command("describe")
+def patterns_describe(
+    pattern_id: str = typer.Argument(..., help="Pattern ID (e.g. BZ-05, JR-21)"),
+) -> None:
+    """Show full details for a single pattern."""
+    pattern_id_norm = pattern_id.upper()
+    match = next((p for p in ALL_PATTERNS if p["id"] == pattern_id_norm), None)
+    if match is None:
+        console.print(f"[red]Pattern '{pattern_id_norm}' not found.[/red]")
+        console.print("[dim]Use `ghosttype patterns list` to see all patterns.[/dim]")
+        raise typer.Exit(code=1)
+
+    sev = match["severity"]
+    sev_color = "red" if sev >= 0.7 else "yellow" if sev >= 0.5 else "green" if sev < 0 else "dim"
+
+    console.print()
+    console.print(f"[bold]{match['id']}[/bold]  [dim]({match['category']})[/dim]")
+    console.print(f"  Severity     : [{sev_color}]{sev:+.1f}[/{sev_color}]")
+    console.print(f"  Description  : {match.get('description', '[dim]—[/dim]')}")
+    console.print(f"  Regex        : [magenta]{match['regex']}[/magenta]")
+    console.print()
+
+
 @app.command()
 def serve(
     host: str = typer.Option("127.0.0.1", "--host", help="Bind address (use 0.0.0.0 to expose on LAN)"),
     port: int = typer.Option(8080, "--port", "-p", help="Port to listen on"),
     reload: bool = typer.Option(False, "--reload", help="Auto-reload on code changes (dev)"),
+    open_browser: bool = typer.Option(True, "--browser/--no-browser", help="Open the UI in the default browser on start"),
 ) -> None:
     """Start the local web UI at http://<host>:<port> (default 127.0.0.1:8080).
 
@@ -595,8 +690,22 @@ def serve(
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from e
 
-    console.print(f"[bold cyan]GhostType[/bold cyan] serving on [bold]http://{host}:{port}[/bold]")
+    url = f"http://{host}:{port}"
+    console.print(f"[bold cyan]GhostType[/bold cyan] serving on [bold]{url}[/bold]")
     console.print("[dim]Press Ctrl+C to stop.[/dim]")
+
+    if open_browser and not reload:
+        # Open the browser shortly after the server has had time to start. Skipped
+        # in --reload mode because uvicorn re-execs the process and would re-open
+        # the browser each time.
+        import threading
+        import webbrowser
+
+        def _open() -> None:
+            webbrowser.open(url)
+
+        threading.Timer(1.0, _open).start()
+
     api_serve(host=host, port=port, reload=reload)
 
 
