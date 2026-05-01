@@ -21,8 +21,14 @@ from rich.table import Table
 
 from ghosttype import __version__
 from ghosttype.heuristics.engine import HeuristicEngine
+from ghosttype.heuristics.patterns import ALL_PATTERNS
 from ghosttype.preprocessor import preprocess
-from ghosttype.scorer import AnalysisResult, aggregate
+from ghosttype.scorer import (
+    EXIT_CLEAN,
+    EXIT_HIGH,
+    AnalysisResult,
+    aggregate,
+)
 from ghosttype.semantic import semantic_score_passages
 from ghosttype.stylistic import stylistic_score_passages
 
@@ -36,6 +42,11 @@ console = Console()
 DEFAULT_EXTENSIONS = (".txt", ".md")
 STDIN_TOKEN = "-"
 VALID_FORMATS = ("rich", "json", "csv", "md")
+
+# Lookup table for --explain so we can show pattern descriptions.
+_PATTERN_DESCRIPTIONS: dict[str, str] = {
+    p["id"]: p.get("description", "") for p in ALL_PATTERNS
+}
 
 
 # ---------- pipeline ----------
@@ -109,6 +120,101 @@ def _get_score_style(score: int) -> str:
     if score <= 80:
         return "red"
     return "bold red reverse"
+
+
+def _override_exit_code(result: AnalysisResult, threshold: int | None) -> int:
+    """Resolve the final exit code.
+
+    Without --threshold: use result.exit_code (3-bucket logic from the scorer).
+    With --threshold N: binary — score > N → EXIT_HIGH, else EXIT_CLEAN.
+    """
+    if threshold is None:
+        return result.exit_code
+    return EXIT_HIGH if result.score > threshold else EXIT_CLEAN
+
+
+def _render_explanation(result: AnalysisResult, threshold: int | None) -> None:
+    """Render the score breakdown for --explain mode (rich console).
+
+    Shows: per-component contributions, weights, human bonus, plus per-passage
+    rule flags (cluster bonus, BZ-05) and pattern descriptions.
+    """
+    breakdown = result.breakdown
+    if breakdown is None:
+        return
+
+    console.print("[bold]Score breakdown[/bold]")
+    weights_sum = breakdown.h_weight + breakdown.s_weight + breakdown.st_weight
+    bd = Table(show_header=True, header_style="bold cyan")
+    bd.add_column("Component", style="bold")
+    bd.add_column("Raw", justify="right")
+    bd.add_column("Weight", justify="right")
+    bd.add_column("Contribution", justify="right")
+    bd.add_row(
+        "Heuristic (document)",
+        f"{breakdown.heuristic_doc_score:.1f}",
+        f"{breakdown.h_weight:.2f}",
+        f"{breakdown.h_weight * breakdown.heuristic_doc_score:.1f}",
+    )
+    if breakdown.semantic_score is not None:
+        bd.add_row(
+            "Semantic",
+            f"{breakdown.semantic_score * 100:.1f}",
+            f"{breakdown.s_weight:.2f}",
+            f"{breakdown.s_weight * breakdown.semantic_score * 100:.1f}",
+        )
+    else:
+        bd.add_row("Semantic", "[dim]—[/dim]", "[dim]—[/dim]", "[dim]—[/dim]")
+    if breakdown.stylistic_score is not None:
+        bd.add_row(
+            "Stylistic",
+            f"{breakdown.stylistic_score * 100:.1f}",
+            f"{breakdown.st_weight:.2f}",
+            f"{breakdown.st_weight * breakdown.stylistic_score * 100:.1f}",
+        )
+    else:
+        bd.add_row("Stylistic", "[dim]—[/dim]", "[dim]—[/dim]", "[dim]—[/dim]")
+    bd.add_row(
+        "Human bonus",
+        f"{breakdown.human_indicators} indicators",
+        "—",
+        f"{breakdown.human_bonus:+d}",
+    )
+    bd.add_row("[bold]Total[/bold]", "", f"Σ={weights_sum:.2f}", f"[bold]{result.score}[/bold]")
+    console.print(bd)
+    console.print()
+
+    if threshold is not None:
+        verdict = "AI" if result.score > threshold else "human"
+        console.print(
+            f"[bold]Threshold gate:[/bold] score {result.score} vs threshold {threshold} → "
+            f"[{'red' if verdict == 'AI' else 'green'}]{verdict}[/]"
+        )
+        console.print()
+
+    # Per-passage rule flags + pattern descriptions
+    flagged = [pr for pr in result.passages if pr.cluster_bonus_applied or pr.bz05_rule_applied or pr.hits]
+    if not flagged:
+        return
+
+    console.print("[bold]Passage details[/bold]")
+    for pr in flagged:
+        flags = []
+        if pr.cluster_bonus_applied:
+            flags.append("[yellow]cluster bonus ×1.15[/yellow]")
+        if pr.bz05_rule_applied:
+            flags.append("[red]BZ-05 floor → 70[/red]")
+        flag_str = " · ".join(flags) if flags else "[dim]no rule fired[/dim]"
+        console.print(f"  Passage #{pr.passage.index + 1}  score={pr.score}  hits={len(pr.hits)}  {flag_str}")
+        for hit in pr.hits:
+            desc = _PATTERN_DESCRIPTIONS.get(hit.pattern_id, "")
+            console.print(
+                f"    [dim]{hit.pattern_id}[/dim] [{hit.category}] "
+                f"sev={hit.severity:+.1f}  '{hit.matched_text}'"
+            )
+            if desc:
+                console.print(f"        [dim]{desc}[/dim]")
+    console.print()
 
 
 def _render_rich_output(result: AnalysisResult) -> None:
@@ -344,6 +450,8 @@ _format_opt = typer.Option("rich", "--format", "-f", help="Output format: rich, 
 _json_opt = typer.Option(False, "--json", help="Shortcut for --format json")
 _recursive_opt = typer.Option(False, "--recursive", "-r", help="Recurse into subdirectories")
 _ext_opt = typer.Option(None, "--ext", help="Comma-separated extensions for directory mode (default: txt,md)")
+_explain_opt = typer.Option(False, "--explain", help="Show score breakdown and per-pattern rationale")
+_threshold_opt = typer.Option(None, "--threshold", help="Score > N exits with HIGH (2). Bypasses default 3-bucket exit code.")
 
 
 @app.command()
@@ -353,6 +461,8 @@ def analyze(
     json_output: bool = _json_opt,
     recursive: bool = _recursive_opt,
     ext: str = _ext_opt,
+    explain: bool = _explain_opt,
+    threshold: int = _threshold_opt,
 ) -> None:
     """Analyze a file, directory, or glob pattern for AI slop patterns.
 
@@ -362,11 +472,16 @@ def analyze(
       ghosttype analyze ./essays/                    # directory (.txt + .md)
       ghosttype analyze ./essays/ -r                 # recursive
       ghosttype analyze "drafts/*.md"                # glob
+      ghosttype analyze essay.txt --explain          # show score breakdown
+      ghosttype analyze essay.txt --threshold 60     # CI gate: exit 2 if > 60
       ghosttype analyze ./essays/ --format csv > report.csv
       ghosttype analyze ./essays/ --format md > report.md
     """
     extensions = _normalize_extensions(ext)
     fmt = _resolve_format(output_format, json_output)
+    if threshold is not None and not (0 <= threshold <= 100):
+        console.print(f"[red]--threshold must be in [0, 100], got {threshold}[/red]")
+        raise typer.Exit(code=2)
 
     # Stdin path is always single-source.
     if target == STDIN_TOKEN:
@@ -380,7 +495,9 @@ def analyze(
             console.print("[yellow]Warning: Empty input[/yellow]")
             raise typer.Exit(code=0)
         _emit_single(result, fmt, label="-")
-        raise typer.Exit(code=result.exit_code)
+        if explain and fmt == "rich":
+            _render_explanation(result, threshold)
+        raise typer.Exit(code=_override_exit_code(result, threshold))
 
     paths = _resolve_target(target, recursive=recursive, exts=extensions)
     if not paths:
@@ -406,7 +523,9 @@ def analyze(
             raise typer.Exit(code=0)
 
         _emit_single(result, fmt, label=str(path))
-        raise typer.Exit(code=result.exit_code)
+        if explain and fmt == "rich":
+            _render_explanation(result, threshold)
+        raise typer.Exit(code=_override_exit_code(result, threshold))
 
     # Batch path: progress bar (only in rich mode) + chosen formatter.
     results: list[tuple[Path, AnalysisResult | None]] = []
@@ -430,7 +549,16 @@ def analyze(
 
     _emit_batch(results, fmt)
 
-    scored_exits = [r.exit_code for _, r in results if r is not None]
+    if explain and fmt == "rich":
+        for path, result in results:
+            if result is None:
+                continue
+            console.print(f"\n[bold cyan]── {path} ──[/bold cyan]")
+            _render_explanation(result, threshold)
+
+    scored_exits = [
+        _override_exit_code(r, threshold) for _, r in results if r is not None
+    ]
     raise typer.Exit(code=max(scored_exits) if scored_exits else 0)
 
 

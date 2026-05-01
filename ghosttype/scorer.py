@@ -34,6 +34,25 @@ class PassageResult:
     score: int
     hits: list[PatternHit]
     label: str
+    cluster_bonus_applied: bool = False
+    bz05_rule_applied: bool = False
+
+
+@dataclass
+class ScoreBreakdown:
+    """Per-component contributions that produced the document score.
+
+    Populated by aggregate() so --explain can show how the final score was built.
+    """
+
+    heuristic_doc_score: float
+    semantic_score: float | None
+    stylistic_score: float | None
+    human_indicators: int
+    human_bonus: int
+    h_weight: float
+    s_weight: float
+    st_weight: float
 
 
 @dataclass
@@ -45,6 +64,7 @@ class AnalysisResult:
     passages: list[PassageResult]
     total_hits: int
     exit_code: int
+    breakdown: ScoreBreakdown | None = None
 
 
 # Score ranges and labels
@@ -84,8 +104,21 @@ def _get_exit_code(score: int) -> int:
     return EXIT_HIGH
 
 
-def _score_passage(passage: Passage, hits: list[PatternHit]) -> int:
+def _cluster_bonus_applies(hits: list[PatternHit]) -> bool:
+    """True when the passage has hits in 3+ distinct positive-severity categories."""
+    distinct_categories = {h.category for h in hits if h.severity > 0}
+    return len(distinct_categories) >= CLUSTER_CATEGORY_THRESHOLD
+
+
+def _bz05_rule_applies(hits: list[PatternHit]) -> bool:
+    """True when 2+ BZ-05 high-confidence AI tells appear in the passage."""
+    return sum(1 for h in hits if h.pattern_id == "BZ-05") >= BZ05_RULE_MIN_HITS
+
+
+def _score_passage(passage: Passage, hits: list[PatternHit]) -> tuple[int, bool, bool]:
     """Calculate score for a single passage.
+
+    Returns (score, cluster_bonus_applied, bz05_rule_applied).
 
     Formula: sum of severities normalized by passage word count, then:
     - Multiply by CLUSTER_BONUS_MULTIPLIER when 3+ distinct categories appear
@@ -94,7 +127,7 @@ def _score_passage(passage: Passage, hits: list[PatternHit]) -> int:
       (delve / tapestry / nuanced understanding / multifaceted).
     """
     if not hits:
-        return 0
+        return 0, False, False
 
     total_severity = sum(hit.severity for hit in hits)
     # Normalize by word count (was character count — penalised short passages
@@ -104,19 +137,17 @@ def _score_passage(passage: Passage, hits: list[PatternHit]) -> int:
     length_factor = math.sqrt(word_count) / 3.0
     raw_score = (total_severity / length_factor) * 100
 
-    # Cluster bonus: 3+ distinct positive-severity categories in the same passage.
-    distinct_categories = {h.category for h in hits if h.severity > 0}
-    if len(distinct_categories) >= CLUSTER_CATEGORY_THRESHOLD:
+    cluster_applied = _cluster_bonus_applies(hits)
+    if cluster_applied:
         raw_score *= CLUSTER_BONUS_MULTIPLIER
 
     score = min(100, max(0, round(raw_score)))
 
-    # BZ-05 special rule: 2+ high-confidence AI tells force the passage HIGH.
-    bz05_count = sum(1 for h in hits if h.pattern_id == "BZ-05")
-    if bz05_count >= BZ05_RULE_MIN_HITS:
+    bz05_applied = _bz05_rule_applies(hits)
+    if bz05_applied:
         score = max(score, BZ05_RULE_MIN_SCORE)
 
-    return score
+    return score, cluster_applied, bz05_applied
 
 
 def aggregate(
@@ -142,7 +173,7 @@ def aggregate(
 
     for passage in passages:
         hits = hits_by_passage.get(passage.index, [])
-        passage_score = _score_passage(passage, hits)
+        passage_score, cluster_flag, bz05_flag = _score_passage(passage, hits)
         label = _get_label(passage_score)
 
         passage_results.append(
@@ -151,6 +182,8 @@ def aggregate(
                 score=passage_score,
                 hits=hits,
                 label=label,
+                cluster_bonus_applied=cluster_flag,
+                bz05_rule_applied=bz05_flag,
             )
         )
 
@@ -202,10 +235,22 @@ def aggregate(
     doc_label = _get_label(doc_score)
     exit_code = _get_exit_code(doc_score)
 
+    breakdown = ScoreBreakdown(
+        heuristic_doc_score=heuristic_score,
+        semantic_score=semantic_score,
+        stylistic_score=stylistic_score,
+        human_indicators=human_indicators,
+        human_bonus=human_bonus,
+        h_weight=h_weight,
+        s_weight=s_weight,
+        st_weight=st_weight,
+    )
+
     return AnalysisResult(
         score=doc_score,
         label=doc_label,
         passages=passage_results,
         total_hits=total_hits,
         exit_code=exit_code,
+        breakdown=breakdown,
     )

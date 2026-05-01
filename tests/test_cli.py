@@ -233,3 +233,100 @@ def test_cli_json_flag_still_works_as_alias(tmp_path) -> None:
     data = json.loads(result.output)
     assert "score" in data
     assert "passages" in data
+
+
+# ---------- --explain flag ----------
+
+
+def test_cli_explain_renders_score_breakdown(tmp_path) -> None:
+    """--explain adds a Score breakdown table with all components."""
+    f = tmp_path / "x.txt"
+    f.write_text("In today's world, we leverage synergy.", encoding="utf-8")
+    result = runner.invoke(app, ["analyze", str(f), "--explain"])
+    assert "Score breakdown" in result.output
+    assert "Heuristic" in result.output
+    assert "Semantic" in result.output
+    assert "Stylistic" in result.output
+    assert "Passage details" in result.output
+
+
+def test_cli_explain_shows_pattern_descriptions(tmp_path) -> None:
+    """--explain prints pattern descriptions inline with hits."""
+    f = tmp_path / "x.txt"
+    f.write_text("In today's world, we leverage synergy.", encoding="utf-8")
+    result = runner.invoke(app, ["analyze", str(f), "--explain"])
+    # OP-01 description from openers.py
+    assert "OP-01" in result.output
+    # The pattern description (or part of it) must appear
+    assert "Temporal" in result.output or "today" in result.output.lower()
+
+
+def test_cli_explain_flags_cluster_bonus_when_fired(tmp_path) -> None:
+    """When 3+ categories cluster, --explain shows the cluster-bonus indicator."""
+    f = tmp_path / "x.txt"
+    # Buzzword + transition + academic = 3 distinct categories
+    f.write_text(
+        "In today's evolving landscape, we leverage transformative methodologies. "
+        "Furthermore, the holistic framework drives stakeholder synergy.",
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["analyze", str(f), "--explain"])
+    assert "cluster bonus" in result.output.lower()
+
+
+def test_cli_explain_does_not_break_json(tmp_path) -> None:
+    """--explain is only rendered for rich format; JSON output stays clean."""
+    f = tmp_path / "x.txt"
+    f.write_text("In today's world, we leverage synergy.", encoding="utf-8")
+    result = runner.invoke(app, ["analyze", str(f), "--explain", "--json"])
+    # JSON should still be parseable — no breakdown text leaks into it
+    data = json.loads(result.output)
+    assert "score" in data
+
+
+# ---------- --threshold flag ----------
+
+
+def test_cli_threshold_overrides_to_clean_when_above_score(tmp_path) -> None:
+    """Score below --threshold → exit 0 even if default exit code would be 2."""
+    f = tmp_path / "x.txt"
+    f.write_text("In today's world, we leverage synergy.", encoding="utf-8")
+    # Score of this text is around 66 — threshold 80 keeps it under, exits CLEAN.
+    result = runner.invoke(app, ["analyze", str(f), "--threshold", "80"])
+    assert result.exit_code == 0
+
+
+def test_cli_threshold_overrides_to_high_when_below_score(tmp_path) -> None:
+    """Score above --threshold → exit 2 regardless of default bucket."""
+    f = tmp_path / "x.txt"
+    f.write_text("In today's world, we leverage synergy.", encoding="utf-8")
+    # Score is around 66 — threshold 30 marks anything above as HIGH.
+    result = runner.invoke(app, ["analyze", str(f), "--threshold", "30"])
+    assert result.exit_code == 2
+
+
+def test_cli_threshold_invalid_range_rejected() -> None:
+    """--threshold outside [0, 100] is rejected."""
+    result = runner.invoke(app, ["analyze", "-", "--threshold", "150"], input="text")
+    assert result.exit_code != 0
+    assert "threshold" in result.output.lower()
+
+
+def test_cli_threshold_with_explain_shows_verdict(tmp_path) -> None:
+    """--explain with --threshold prints the gate verdict line."""
+    f = tmp_path / "x.txt"
+    f.write_text("In today's world, we leverage synergy.", encoding="utf-8")
+    result = runner.invoke(app, ["analyze", str(f), "--explain", "--threshold", "30"])
+    assert "Threshold gate" in result.output
+
+
+def test_cli_threshold_in_batch_mode(tmp_path) -> None:
+    """Batch exit code respects --threshold."""
+    (tmp_path / "slop.txt").write_text("In today's world, we leverage synergy.", encoding="utf-8")
+    (tmp_path / "clean.txt").write_text("Plain text.", encoding="utf-8")
+    # Threshold 90: nothing scores that high → exit 0
+    result_high = runner.invoke(app, ["analyze", str(tmp_path), "--threshold", "90"])
+    assert result_high.exit_code == 0
+    # Threshold 40: at least the slop file should exceed → exit 2
+    result_low = runner.invoke(app, ["analyze", str(tmp_path), "--threshold", "40"])
+    assert result_low.exit_code == 2

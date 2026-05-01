@@ -61,9 +61,12 @@ def test_get_label_boundaries() -> None:
 
 
 def test_score_passage_no_hits() -> None:
-    """Test passage with no hits scores 0."""
+    """Test passage with no hits scores 0 with no rule flags."""
     passage = Passage(index=0, text="Clean text.", start_char=0, end_char=11)
-    assert _score_passage(passage, []) == 0
+    score, cluster, bz05 = _score_passage(passage, [])
+    assert score == 0
+    assert cluster is False
+    assert bz05 is False
 
 
 def test_score_passage_with_hits() -> None:
@@ -73,7 +76,7 @@ def test_score_passage_with_hits() -> None:
         PatternHit(pattern_id="OP-01", category="opener", matched_text="In today's world", start_char=0, end_char=17, severity=0.8),
         PatternHit(pattern_id="BZ-01", category="buzzword", matched_text="synergy", start_char=35, end_char=42, severity=0.6),
     ]
-    score = _score_passage(passage, hits)
+    score, _cluster, _bz05 = _score_passage(passage, hits)
     # 8 words → floored to 10 ; sqrt(10)/3 ≈ 1.054 ; (1.4 / 1.054) * 100 ≈ 133 → clamped 100
     assert score == 100
 
@@ -84,7 +87,7 @@ def test_score_passage_low_severity_short_text() -> None:
     hits = [
         PatternHit(pattern_id="HE-01", category="hedge", matched_text="It is worth noting", start_char=0, end_char=18, severity=0.5),
     ]
-    score = _score_passage(passage, hits)
+    score, _cluster, _bz05 = _score_passage(passage, hits)
     # 6 words → floored to 10 ; sqrt(10)/3 ≈ 1.054 ; (0.5 / 1.054) * 100 ≈ 47
     assert 40 <= score <= 55, f"Expected score in [40, 55], got {score}"
 
@@ -171,11 +174,13 @@ def test_cluster_bonus_three_categories_amplifies_score() -> None:
     three_cats = two_cats + [
         PatternHit(pattern_id="BZ-01", category="buzzword", matched_text="z", start_char=4, end_char=5, severity=0.4),
     ]
-    score_2 = _score_passage(passage, two_cats)
-    score_3 = _score_passage(passage, three_cats)
+    score_2, cluster_2, _ = _score_passage(passage, two_cats)
+    score_3, cluster_3, _ = _score_passage(passage, three_cats)
     # Adding one more hit should bump the score; the cluster multiplier amplifies
     # it further than the linear severity addition alone would.
     assert score_3 > score_2
+    assert cluster_2 is False
+    assert cluster_3 is True
 
 
 def test_cluster_bonus_ignores_negative_severity_categories() -> None:
@@ -192,10 +197,12 @@ def test_cluster_bonus_ignores_negative_severity_categories() -> None:
         PatternHit(pattern_id="HE-01", category="hedge", matched_text="b", start_char=2, end_char=3, severity=0.4),
         PatternHit(pattern_id="BZ-01", category="buzzword", matched_text="c", start_char=4, end_char=5, severity=0.4),
     ]
-    s_with_neg = _score_passage(passage, hits_two_pos_one_neg)
-    s_three_pos = _score_passage(passage, hits_three_pos)
+    s_with_neg, cluster_neg, _ = _score_passage(passage, hits_two_pos_one_neg)
+    s_three_pos, cluster_pos, _ = _score_passage(passage, hits_three_pos)
     # 3 positive categories triggers cluster bonus; 2 positive + 1 negative does not.
     assert s_three_pos > s_with_neg
+    assert cluster_neg is False
+    assert cluster_pos is True
 
 
 def test_bz05_special_rule_two_tells_force_high() -> None:
@@ -206,8 +213,9 @@ def test_bz05_special_rule_two_tells_force_high() -> None:
         PatternHit(pattern_id="BZ-05", category="buzzword", matched_text="delve", start_char=3, end_char=8, severity=0.9),
         PatternHit(pattern_id="BZ-05", category="buzzword", matched_text="multifaceted", start_char=20, end_char=32, severity=0.9),
     ]
-    score = _score_passage(passage, hits)
+    score, _cluster, bz05 = _score_passage(passage, hits)
     assert score >= 70, f"BZ-05 rule: expected score >= 70, got {score}"
+    assert bz05 is True
 
 
 def test_bz05_special_rule_one_tell_does_not_trigger() -> None:
@@ -219,6 +227,7 @@ def test_bz05_special_rule_one_tell_does_not_trigger() -> None:
                    start_char=long_text.find("multifaceted"),
                    end_char=long_text.find("multifaceted") + 12, severity=0.9),
     ]
-    score = _score_passage(passage, hits)
+    score, _cluster, bz05 = _score_passage(passage, hits)
     # Long passage + single hit + no cluster → well below 70
     assert score < 70, f"Single BZ-05 hit should not trigger HIGH floor, got {score}"
+    assert bz05 is False
