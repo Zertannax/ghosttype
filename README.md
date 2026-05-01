@@ -1,12 +1,10 @@
 <div align="center">
 
-# 👻 GhostType
-
-**Detect AI-generated slop in any text. Score it 0–100. Stay 100% local.**
+<img src="docs/banner.png" alt="GhostType — Detect AI-generated slop. Score it 0–100." width="720">
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-136%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-136%20passing-brightgreen.svg)](#development)
 
 </div>
 
@@ -59,6 +57,10 @@ ghosttype analyze ./drafts/ --threshold 60
 ghosttype analyze essay.txt --explain
 ```
 
+<p align="center">
+  <img src="docs/screenshots/cli-rich.png" alt="GhostType CLI rich output" width="640">
+</p>
+
 ### 🌐 Web UI (drag-drop)
 
 ```bash
@@ -67,6 +69,14 @@ ghosttype serve
 ```
 
 A pure-black, animated drag-drop interface. Drop a `.txt` or paste your text. Score, breakdown, per-passage diagnostics, downloadable Markdown report.
+
+<p align="center">
+  <img src="docs/screenshots/web-ui.png" alt="GhostType web UI — drag-drop interface" width="720">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/web-ui-breakdown.png" alt="Score breakdown and per-passage diagnostics" width="720">
+</p>
 
 ### 🔌 HTTP API
 
